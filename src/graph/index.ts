@@ -60,6 +60,14 @@ export function thingAt(graph: Graph, id: ThingId): Thing {
   return thing;
 }
 
+export function referenceOf(model: Model, usage: Use): Reference {
+  const reference = model.references[usage.reference];
+  if (reference === undefined) {
+    throw new RangeError(`no reference ${usage.reference} in the model`);
+  }
+  return reference;
+}
+
 function thingsOf(model: Model): { things: Thing[]; thingOf: (ThingId | undefined)[] } {
   const counted = (id: ItemId): boolean => {
     const item = itemOf(model, id);

@@ -15,11 +15,9 @@ test("a method written anywhere is part of its type and things that use each oth
   sample.refer(spawn, timers);
   const graph = buildGraph(sample.model);
   const ofFire = graph.thingOf[fire];
-  assert.notEqual(ofFire, undefined);
-  if (ofFire !== undefined) {
-    assert.equal(thingAt(graph, ofFire).item, timers);
-    assert.equal(thingAt(graph, ofFire).home, b);
-  }
+  assert.ok(ofFire !== undefined);
+  assert.equal(thingAt(graph, ofFire).item, timers);
+  assert.equal(thingAt(graph, ofFire).home, b);
   assert.equal(graph.tangles.length, 1);
   assert.equal(graph.tangles[0]?.length, 2);
 });

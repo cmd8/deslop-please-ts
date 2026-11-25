@@ -67,10 +67,13 @@ function at(values: readonly number[], position: number): number {
 }
 
 function compareNumberLists(a: readonly number[], b: readonly number[]): number {
-  for (let position = 0; position < Math.min(a.length, b.length); position += 1) {
-    const difference = at(a, position) - at(b, position);
-    if (difference !== 0) {
-      return difference;
+  for (const [position, node] of a.entries()) {
+    const other = b[position];
+    if (other === undefined) {
+      return 1;
+    }
+    if (node !== other) {
+      return node - other;
     }
   }
   return a.length - b.length;
