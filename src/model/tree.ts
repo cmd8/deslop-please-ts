@@ -24,10 +24,14 @@ export class TreeNode {
 }
 
 export class Tree {
-  readonly root = new TreeNode("", "workspace", undefined);
-  readonly #nodes: TreeNode[] = [this.root];
-  readonly #positions = new Map<TreeNode, number>([[this.root, 0]]);
+  readonly #root = new TreeNode("", "workspace", undefined);
+  readonly #nodes: TreeNode[] = [this.#root];
+  readonly #positions = new Map<TreeNode, number>([[this.#root, 0]]);
   readonly #children = new Map<TreeNode, Map<string, TreeNode>>();
+
+  package(name: string, within: TreeNode | undefined): TreeNode {
+    return this.child(within ?? this.#root, "package", name);
+  }
 
   child(parent: TreeNode, kind: NodeKind, name: string): TreeNode {
     const children = this.#children.get(parent) ?? new Map<string, TreeNode>();
@@ -48,8 +52,8 @@ export class Tree {
     node.markAsTestCode();
   }
 
-  eachAfterItsParent(): readonly TreeNode[] {
-    return this.#nodes;
+  eachAfterItsParent(): TreeNode[] {
+    return [...this.#nodes];
   }
 
   compare(a: TreeNode, b: TreeNode): number {
@@ -77,7 +81,7 @@ export class Tree {
   }
 
   commonAncestor(a: TreeNode, b: TreeNode): TreeNode {
-    const up = (node: TreeNode): TreeNode => node.parent ?? this.root;
+    const up = (node: TreeNode): TreeNode => node.parent ?? this.#root;
     while (a.depth > b.depth) {
       a = up(a);
     }

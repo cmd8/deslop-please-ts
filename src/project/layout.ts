@@ -51,11 +51,11 @@ function packageNodesOf(workspace: Workspace, tree: Tree): Map<WorkspacePackage,
       { root: workspace.root, packages: workspace.packages.filter((other) => other !== member) },
       member.directory,
     );
-    const parent = around === undefined ? tree.root : nodes.get(around);
-    if (parent === undefined) {
-      throw new RangeError(`no node for the package at ${around?.directory ?? workspace.root}`);
+    const parent = around === undefined ? undefined : nodes.get(around);
+    if (around !== undefined && parent === undefined) {
+      throw new RangeError(`no node for the package at ${around.directory}`);
     }
-    nodes.set(member, tree.child(parent, "package", member.name));
+    nodes.set(member, tree.package(member.name, parent));
   }
   return nodes;
 }

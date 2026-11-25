@@ -28,7 +28,7 @@ export class Sample {
   }
 
   package(): TreeNode {
-    return this.tree.child(this.tree.root, "package", SAMPLE_PACKAGE);
+    return this.tree.package(SAMPLE_PACKAGE, undefined);
   }
 
   module(path: string): TreeNode {

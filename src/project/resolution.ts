@@ -160,7 +160,7 @@ export class NameResolver {
 
   #itemDeclaring(symbol: CompilerSymbol): Item | undefined {
     const first = symbol.declarations[0];
-    return first === undefined ? undefined : this.#catalog.itemDeclaredBy(first);
+    return first === undefined ? undefined : this.#catalog.placement.itemDeclaredBy(first);
   }
 
   #aliasTargetsOf(checker: Checker): Map<number, Item | undefined> {

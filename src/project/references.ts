@@ -28,7 +28,7 @@ export function referencesIn(context: FileContext, names: readonly ResolvedName[
         break;
       }
       visited.push(at);
-      found = catalog.itemAt(context.tree.path, at);
+      found = catalog.placement.itemAt(context.tree.path, at);
       if (found !== undefined || at === context.tree) {
         break;
       }

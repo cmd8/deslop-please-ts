@@ -74,7 +74,7 @@ test("a wide directory concerns what is below it and a long file its module", ()
   const a = sample.files[1];
   assert.ok(a !== undefined);
   sample.files[1] = { ...a, lines: 2_001 };
-  const q = sample.tree.child(sample.tree.root, "package", "q");
+  const q = sample.tree.package("q", undefined);
   sample.file(q, "q/src/index.ts", 1);
   const both = ["long-file src/a.ts", "wide-directory src/"];
   assert.deepEqual(keys(sample, undefined), both);

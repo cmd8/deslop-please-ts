@@ -185,10 +185,10 @@ describe("the workspace", () => {
     const packages = model.tree
       .eachAfterItsParent()
       .filter((node) => node.kind === "package")
-      .map((node) => [node.name, node.parent]);
+      .map((node) => [node.name, node.parent?.kind]);
     assert.deepEqual(packages, [
-      ["web", model.tree.root],
-      ["shared", model.tree.root],
+      ["web", "workspace"],
+      ["shared", "workspace"],
     ]);
   });
 

@@ -58,8 +58,8 @@ function readFile(
   const names = resolver.resolve(checker, tree);
   const named = namedItems(names);
   const wrappings = declarationsOf(tree).flatMap((declaration): (readonly [DeclarationRecord, BodyWrapping])[] => {
-    const record = catalog.declarationAt(tree.path, declaration.node);
-    const item = catalog.itemAt(tree.path, declaration.node);
+    const record = catalog.placement.declarationAt(tree.path, declaration.node);
+    const item = catalog.placement.itemAt(tree.path, declaration.node);
     const wrapping =
       item === undefined ? undefined : wrappingOf(catalog, declaration.node, item, (node) => named.get(node));
     return record === undefined || wrapping === undefined ? [] : [[record, wrapping]];

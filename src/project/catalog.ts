@@ -46,21 +46,20 @@ interface Placed {
   readonly item: Item;
 }
 
-export class Catalog {
+export interface Catalog {
   readonly items: readonly Item[];
   readonly declarationsOf: ReadonlyMap<Item, readonly DeclarationRecord[]>;
   readonly memberNames: ReadonlySet<string>;
   readonly fieldShapes: ReadonlyMap<Item, ValueShape>;
   readonly constructorOf: ReadonlyMap<Item, Item>;
+  readonly placement: Placement;
+}
+
+export class Placement {
   readonly #placed: ReadonlyMap<string, ReadonlyMap<string, Placed>>;
   readonly #declaredBy: ReadonlyMap<string, ReadonlyMap<number, Item>>;
 
-  constructor(parts: CatalogParts, placed: ReadonlyMap<string, ReadonlyMap<string, Placed>>) {
-    this.items = parts.items;
-    this.declarationsOf = parts.declarationsOf;
-    this.memberNames = parts.memberNames;
-    this.fieldShapes = parts.fieldShapes;
-    this.constructorOf = parts.constructorOf;
+  constructor(placed: ReadonlyMap<string, ReadonlyMap<string, Placed>>) {
     this.#placed = placed;
     this.#declaredBy = new Map(
       [...placed].map(([path, inFile]) => [
@@ -85,14 +84,6 @@ export class Catalog {
   itemDeclaredBy(handle: HandleAt): Item | undefined {
     return this.#declaredBy.get(handle.path)?.get(handle.index);
   }
-}
-
-interface CatalogParts {
-  readonly items: readonly Item[];
-  readonly declarationsOf: ReadonlyMap<Item, readonly DeclarationRecord[]>;
-  readonly memberNames: ReadonlySet<string>;
-  readonly fieldShapes: ReadonlyMap<Item, ValueShape>;
-  readonly constructorOf: ReadonlyMap<Item, Item>;
 }
 
 const CONSTRUCTOR = "constructor";
@@ -221,16 +212,14 @@ export function catalogItems(sources: readonly FiledRecord[]): Catalog {
       constructorOf.set(item.parent, item);
     }
   }
-  return new Catalog(
-    {
-      items,
-      declarationsOf,
-      memberNames: new Set(canonical.map(({ declaration }) => declaration.memberName)),
-      fieldShapes,
-      constructorOf,
-    },
-    placed,
-  );
+  return {
+    items,
+    declarationsOf,
+    memberNames: new Set(canonical.map(({ declaration }) => declaration.memberName)),
+    fieldShapes,
+    constructorOf,
+    placement: new Placement(placed),
+  };
 }
 
 function sameKey(node: Node | undefined, key: string): boolean {
