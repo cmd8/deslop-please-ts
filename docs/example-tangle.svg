@@ -1,0 +1,74 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 320" role="img" aria-label="tangle: before, five functions in the modules stats, log and faults know each other in a circle; after, stats registers itself in faults and the circle is open">
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: #1f2328; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.muted { fill: #656d76; }
+.bold { font-weight: 600; }
+.head { font-size: 15px; font-weight: 600; }
+.panel { fill: #f6f8fa; stroke: #d0d7de; }
+.box { fill: #ffffff; stroke: #8c959f; stroke-width: 1.2; }
+.group { fill: none; stroke: #8c959f; stroke-width: 1.2; }
+.private { fill: #ffffff; stroke: #8c959f; stroke-width: 1.2; stroke-dasharray: 4 3; }
+.badbox { fill: #ffebe9; stroke: #cf222e; stroke-width: 1.2; }
+.goodbox { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.2; }
+.bad { stroke: #cf222e; stroke-width: 1.8; fill: none; }
+.good { stroke: #1a7f37; stroke-width: 1.8; fill: none; }
+.badtext { fill: #cf222e; }
+.goodtext { fill: #1a7f37; }
+.tipbad { fill: #cf222e; }
+.tipgood { fill: #1a7f37; }
+.halo { stroke: #f6f8fa; stroke-width: 5; paint-order: stroke; stroke-linejoin: round; }
+</style>
+<defs>
+<marker id="tb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="tipbad"/></marker>
+<marker id="tg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="tipgood"/></marker>
+</defs>
+<rect class="panel" x="0.5" y="0.5" width="509" height="319" rx="8"/>
+<rect class="panel" x="530.5" y="0.5" width="509" height="319" rx="8"/>
+<text class="head" x="24" y="32" text-anchor="start">Before</text>
+<text class="head" x="554" y="32" text-anchor="start">After</text>
+<rect class="group" x="40" y="82" width="132" height="168" rx="6"/>
+<text class="mono muted" x="52" y="104" text-anchor="start">stats</text>
+<rect class="group" x="190" y="82" width="132" height="168" rx="6"/>
+<text class="mono muted" x="202" y="104" text-anchor="start">log</text>
+<rect class="group" x="340" y="82" width="132" height="168" rx="6"/>
+<text class="mono muted" x="352" y="104" text-anchor="start">faults</text>
+<rect class="badbox" x="52" y="118" width="108" height="36" rx="6"/>
+<text class="mono" x="106.0" y="140.5" text-anchor="middle">statsClient</text>
+<rect class="badbox" x="52" y="196" width="108" height="36" rx="6"/>
+<text class="mono" x="106.0" y="218.5" text-anchor="middle">loadFlags</text>
+<rect class="badbox" x="202" y="196" width="108" height="36" rx="6"/>
+<text class="mono" x="256.0" y="218.5" text-anchor="middle">log</text>
+<rect class="badbox" x="202" y="118" width="108" height="36" rx="6"/>
+<text class="mono" x="256.0" y="140.5" text-anchor="middle">error</text>
+<rect class="badbox" x="352" y="118" width="108" height="36" rx="6"/>
+<text class="mono" x="406.0" y="140.5" text-anchor="middle">recordFault</text>
+<path class="bad" d="M106,154 L106,194" marker-end="url(#tb)"/>
+<path class="bad" d="M160,214 L200,214" marker-end="url(#tb)"/>
+<path class="bad" d="M256,196 L256,156" marker-end="url(#tb)"/>
+<path class="bad" d="M310,136 L350,136" marker-end="url(#tb)"/>
+<path class="bad" d="M406,118 L406.0,72.0 Q406,62 396.0,62.0 L116.0,62.0 Q106,62 106.0,72.0 L106,116" marker-end="url(#tb)"/>
+<rect class="group" x="570" y="82" width="132" height="168" rx="6"/>
+<text class="mono muted" x="582" y="104" text-anchor="start">stats</text>
+<rect class="group" x="720" y="82" width="132" height="168" rx="6"/>
+<text class="mono muted" x="732" y="104" text-anchor="start">log</text>
+<rect class="group" x="870" y="82" width="132" height="168" rx="6"/>
+<text class="mono muted" x="882" y="104" text-anchor="start">faults</text>
+<rect class="box" x="582" y="118" width="108" height="36" rx="6"/>
+<text class="mono" x="636.0" y="140.5" text-anchor="middle">statsClient</text>
+<rect class="box" x="582" y="196" width="108" height="36" rx="6"/>
+<text class="mono" x="636.0" y="218.5" text-anchor="middle">loadFlags</text>
+<rect class="box" x="732" y="196" width="108" height="36" rx="6"/>
+<text class="mono" x="786.0" y="218.5" text-anchor="middle">log</text>
+<rect class="box" x="732" y="118" width="108" height="36" rx="6"/>
+<text class="mono" x="786.0" y="140.5" text-anchor="middle">error</text>
+<rect class="box" x="882" y="118" width="108" height="36" rx="6"/>
+<text class="mono" x="936.0" y="140.5" text-anchor="middle">recordFault</text>
+<path class="good" d="M636,154 L636,194" marker-end="url(#tg)"/>
+<path class="good" d="M690,214 L730,214" marker-end="url(#tg)"/>
+<path class="good" d="M786,196 L786,156" marker-end="url(#tg)"/>
+<path class="good" d="M840,136 L880,136" marker-end="url(#tg)"/>
+<rect class="goodbox" x="882" y="196" width="108" height="36" rx="6"/>
+<text class="mono" x="936.0" y="218.5" text-anchor="middle">sendFaultsTo</text>
+<path class="good" d="M582,136 L562.0,136.0 Q552,136 552.0,146.0 L552.0,274.0 Q552,284 562.0,284.0 L926.0,284.0 Q936,284 936.0,274.0 L936,234" marker-end="url(#tg)"/>
+</svg>

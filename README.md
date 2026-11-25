@@ -9,10 +9,7 @@ It is a port of [`deslop-please`](https://github.com/deterministic-machines/desl
 It needs Node 22.18 or newer. It brings its own TypeScript compiler, so the project it checks needs none.
 
 ```bash
-git clone https://github.com/cmd8/deslop-please-ts
-cd deslop-please-ts
-npm install
-npm link
+npm install --save-dev deslop-please-ts
 ```
 
 ## Use
@@ -20,7 +17,7 @@ npm link
 Run it in a directory of a TypeScript project.
 
 ```
-> deslop-please-ts
+> npx deslop-please-ts
 
 error[field-leak]: `RunQueue.head` is known outside `RunQueue`: 1 place in 1 module
   --> src/sched/policy.ts:16:1
@@ -48,7 +45,7 @@ deslop-please-ts: 2 errors, well done!
 Check one package or one module:
 
 ```bash
-deslop-please-ts runqueue/src/sched
+npx deslop-please-ts runqueue/src/sched
 ```
 
 The exit code is 0 when the report is empty, 1 when it has errors, and 2 when the tool cannot run.
@@ -56,8 +53,8 @@ The exit code is 0 when the report is empty, 1 when it has errors, and 2 when th
 ### Mute what is there today
 
 ```bash
-deslop-please-ts --update-allow .deslop-please-ts.allow
-deslop-please-ts --allow .deslop-please-ts.allow
+npx deslop-please-ts --update-allow .deslop-please-ts.allow
+npx deslop-please-ts --allow .deslop-please-ts.allow
 ```
 
 The allow file lists one `<lint> <key>` per line. New errors still fail. An error that is fixed never fails, and the tool says when the file can be tightened.
@@ -65,7 +62,7 @@ The allow file lists one `<lint> <key>` per line. New errors still fail. An erro
 ### Add to your `AGENTS.md`
 
 ```markdown
-- Run `deslop-please-ts` to check for sloppy code structure.
+- Run `npx deslop-please-ts` to check for sloppy code structure.
 - Errors flagged by `deslop-please-ts` must be fixed from first principles. Do not make mechanical moves to hide them.
     - `module-cycle` and `tangle`: what is the intended layer of abstraction? Which module should be at which layer?
     - `field-leak` and `shallow-module`: why do these fields and functions exist at all? What are the patterns of use? Can they be hidden behind a narrow interface? Fix them as a whole, not one leak at a time.
@@ -74,7 +71,7 @@ The allow file lists one `<lint> <key>` per line. New errors still fail. An erro
 
 ## The lints
 
-They are one idea: deep modules, narrow interfaces. A deep module hides work behind a small interface, so a reader only has to learn the interface. The pictures are the ones of the original and show its Rust examples.
+They are one idea: deep modules, narrow interfaces. A deep module hides work behind a small interface, so a reader only has to learn the interface.
 
 | Lint | What it reports |
 |---|---|
@@ -85,21 +82,33 @@ They are one idea: deep modules, narrow interfaces. A deep module hides work beh
 | `wide-directory` | A directory with more than 15 TypeScript files and directories. |
 | `long-file` | A file with more than 2,000 lines. |
 
+## Examples
+
+Each picture shows one report and one way to correct it. The red parts are the problem. The green parts are new.
+
 ### module-cycle
 
-![module-cycle: before, modules kinds and socket use each other, though listen, Stream::new and BACKLOG_MOST only form a chain; after, BACKLOG_MOST moves into kinds and only socket uses kinds](docs/module-cycle.svg)
+Before, `header` uses `barcode` and `barcode` uses `header`, so you cannot read one of them without the other. `barcode` needs only one type of `header`. After, that type is in `barcode` as `ParsedBarcode`, and only `header` uses `barcode`.
+
+![module-cycle: before, the modules header and barcode use each other; after, only header uses barcode](docs/example-module-cycle.svg)
 
 ### tangle
 
-![tangle: before, Tasks in kernel and Timers in its child module timers know each other, with no module cycle; after, tick in kernel calls both and Timers no longer knows Tasks](docs/tangle.svg)
+Before, five functions in three modules know each other in a circle: `statsClient` calls `loadFlags`, `loadFlags` writes to the log, an error in the log calls `recordFault` and `recordFault` calls `statsClient`. After, `faults` has the function `sendFaultsTo`. `statsClient` calls it one time at the start, and `recordFault` does not know `statsClient`.
+
+![tangle: before, five functions in the modules stats, log and faults know each other in a circle; after, stats registers itself in faults and the circle is open](docs/example-tangle.svg)
 
 ### field-leak
 
-![field-leak: before, functions in sched push to, index and bump the items and head of RunQueue; after, they call push, pop and backlog, and only RunQueue works on its fields](docs/field-leak.svg)
+Before, five modules read and change the field `movingCrates` of `FloorPlan`. A change to this field can break all five. After, the field is private. The five modules call three methods of `FloorPlan`, and only `FloorPlan` works on its field.
+
+![field-leak: before, five modules work on the field movingCrates of FloorPlan; after, they call three methods and the field is private](docs/example-field-leak.svg)
 
 ### shallow-module
 
-![shallow-module: before, app calls 9 of the 15 functions of store; after, it calls new, load and summary, and the rest are hidden behind them](docs/shallow-module.svg)
+Before, `gate` shows 10 of its 16 functions, so a user of `gate` must learn most of its parts. After, `gate` shows 5 functions and hides the others behind them. One function `parseZone` replaces `isValidZone` and `normalizeZone`.
+
+![shallow-module: before, the module gate shows 10 of its 16 functions; after, it shows 5 and hides 10](docs/example-shallow-module.svg)
 
 ## How it reads TypeScript
 

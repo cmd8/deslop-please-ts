@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1040 300" role="img" aria-label="module-cycle: before, the modules header and barcode use each other; after, only header uses barcode">
+<style>
+text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: #1f2328; }
+.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.muted { fill: #656d76; }
+.bold { font-weight: 600; }
+.head { font-size: 15px; font-weight: 600; }
+.panel { fill: #f6f8fa; stroke: #d0d7de; }
+.box { fill: #ffffff; stroke: #8c959f; stroke-width: 1.2; }
+.group { fill: none; stroke: #8c959f; stroke-width: 1.2; }
+.private { fill: #ffffff; stroke: #8c959f; stroke-width: 1.2; stroke-dasharray: 4 3; }
+.badbox { fill: #ffebe9; stroke: #cf222e; stroke-width: 1.2; }
+.goodbox { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.2; }
+.bad { stroke: #cf222e; stroke-width: 1.8; fill: none; }
+.good { stroke: #1a7f37; stroke-width: 1.8; fill: none; }
+.badtext { fill: #cf222e; }
+.goodtext { fill: #1a7f37; }
+.tipbad { fill: #cf222e; }
+.tipgood { fill: #1a7f37; }
+.halo { stroke: #f6f8fa; stroke-width: 5; paint-order: stroke; stroke-linejoin: round; }
+</style>
+<defs>
+<marker id="tb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="tipbad"/></marker>
+<marker id="tg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" class="tipgood"/></marker>
+</defs>
+<rect class="panel" x="0.5" y="0.5" width="509" height="299" rx="8"/>
+<rect class="panel" x="530.5" y="0.5" width="509" height="299" rx="8"/>
+<text class="head" x="24" y="32" text-anchor="start">Before</text>
+<text class="head" x="554" y="32" text-anchor="start">After</text>
+<text class="mono muted" x="24" y="62" text-anchor="start">depot/src/labels</text>
+<rect class="badbox" x="40" y="112" width="190" height="104" rx="6"/>
+<text class="mono bold" x="56" y="136" text-anchor="start">header</text>
+<text class="mono" x="56" y="164" text-anchor="start">LabelHeader</text>
+<text class="mono" x="56" y="186" text-anchor="start">parseHeader</text>
+<rect class="badbox" x="280" y="112" width="190" height="104" rx="6"/>
+<text class="mono bold" x="296" y="136" text-anchor="start">barcode</text>
+<text class="mono" x="296" y="164" text-anchor="start">Barcode</text>
+<text class="mono" x="296" y="186" text-anchor="start">barcodeSchema</text>
+<path class="bad" d="M135,112 L135.0,96.0 Q135,86 145.0,86.0 L365.0,86.0 Q375,86 375.0,96.0 L375,110" marker-end="url(#tb)"/>
+<text class="mono badtext" x="255" y="78" text-anchor="middle">Barcode, barcodeSchema</text>
+<path class="bad" d="M375,216 L375.0,232.0 Q375,242 365.0,242.0 L145.0,242.0 Q135,242 135.0,232.0 L135,218" marker-end="url(#tb)"/>
+<text class="mono badtext" x="255" y="262" text-anchor="middle">LabelHeader</text>
+<text class="mono muted" x="554" y="62" text-anchor="start">depot/src/labels</text>
+<rect class="box" x="570" y="112" width="190" height="104" rx="6"/>
+<text class="mono bold" x="586" y="136" text-anchor="start">header</text>
+<text class="mono" x="586" y="164" text-anchor="start">LabelHeader</text>
+<text class="mono" x="586" y="186" text-anchor="start">parseHeader</text>
+<rect class="box" x="810" y="112" width="190" height="104" rx="6"/>
+<text class="mono bold" x="826" y="136" text-anchor="start">barcode</text>
+<text class="mono" x="826" y="164" text-anchor="start">Barcode</text>
+<text class="mono" x="826" y="186" text-anchor="start">barcodeSchema</text>
+<path class="good" d="M665,112 L665.0,96.0 Q665,86 675.0,86.0 L895.0,86.0 Q905,86 905.0,96.0 L905,110" marker-end="url(#tg)"/>
+<text class="mono goodtext" x="785" y="78" text-anchor="middle">Barcode, barcodeSchema, ParsedBarcode</text>
+<text class="mono bold goodtext" x="826" y="208" text-anchor="start">ParsedBarcode</text>
+<rect class="badbox" x="280" y="112" width="190" height="104" rx="6"/>
+<text class="mono bold" x="296" y="136" text-anchor="start">barcode</text>
+<text class="mono" x="296" y="164" text-anchor="start">Barcode</text>
+<text class="mono" x="296" y="186" text-anchor="start">barcodeSchema</text>
+</svg>
