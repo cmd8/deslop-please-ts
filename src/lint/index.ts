@@ -8,7 +8,7 @@ import { fieldLeaks } from "./leaks.ts";
 import { shallowModules } from "./shallow.ts";
 import { tangles } from "./tangles.ts";
 
-export { HELD_IN_MIND, LINTS, compareLints, parseLint } from "./diagnostic.ts";
+export { HELD_IN_MIND, LINTS, compareLints, compareText, parseLint } from "./diagnostic.ts";
 export type { Diagnostic, Lint, Location, LongList, Picture, PlacesInModule, Step } from "./diagnostic.ts";
 
 export function check(model: Model, scope: NodeId | undefined): Diagnostic[] {
