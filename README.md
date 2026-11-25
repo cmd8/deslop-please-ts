@@ -9,7 +9,7 @@ It is a port of [`deslop-please`](https://github.com/deterministic-machines/desl
 It needs Node 22.18 or newer. It brings its own TypeScript compiler, so the project it checks needs none.
 
 ```bash
-git clone <this repository> deslop-please-ts
+git clone https://github.com/cmd8/deslop-please-ts
 cd deslop-please-ts
 npm install
 npm link
@@ -21,6 +21,14 @@ Run it in a directory of a TypeScript project.
 
 ```
 > deslop-please-ts
+
+error[field-leak]: `RunQueue.head` is known outside `RunQueue`: 1 place in 1 module
+  --> src/sched/policy.ts:16:1
+  = note: src/sched/policy.ts:16:1: `runqueue/src/sched/policy:next`
+    runqueue/src/queue/ring:RunQueue
+      head ◀━━━ 1  runqueue/src/sched/policy
+      also known outside: items
+      kept: limit
 
 error[field-leak]: `RunQueue.items` is known outside `RunQueue`: 4 places in 2 modules
   --> src/sched/policy.ts:7:1
@@ -34,7 +42,7 @@ error[field-leak]: `RunQueue.items` is known outside `RunQueue`: 4 places in 2 m
       also known outside: head
       kept: limit
 
-deslop-please-ts: 1 error, well done!
+deslop-please-ts: 2 errors, well done!
 ```
 
 Check one package or one module:
