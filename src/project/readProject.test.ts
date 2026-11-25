@@ -119,6 +119,16 @@ describe("the workspace", () => {
     assert.throws(() => readProject(empty), { name: ToolError.name, message: /^not inside a TypeScript project/ });
   });
 
+  test("a package.json or pnpm-workspace.yaml of an unexpected form is an error that names the file", () => {
+    const badManifest = directoryWith({ "package.json": JSON.stringify({ name: 5 }), "tsconfig.json": SAMPLE_CONFIG });
+    assert.throws(() => readProject(badManifest), { name: ToolError.name, message: /package\.json has an unexpected form/ });
+    const badWorkspace = directoryWith({ "pnpm-workspace.yaml": "packages: libs\n", "package.json": SAMPLE_MANIFEST });
+    assert.throws(() => readProject(badWorkspace), {
+      name: ToolError.name,
+      message: /pnpm-workspace\.yaml has an unexpected form/,
+    });
+  });
+
   test("a project without any tsconfig.json is an error", () => {
     const root = directoryWith({ "package.json": SAMPLE_MANIFEST, "src/a.ts": "export const a = 1;\n" });
     assert.throws(() => readProject(root), { name: ToolError.name, message: /tsconfig\.json/ });
