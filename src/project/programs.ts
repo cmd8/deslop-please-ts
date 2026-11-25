@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import type { SourceFile } from "typescript/ast";
-import { API, type Checker, type Project } from "typescript/sync";
+import { API, type Checker, type Project, type Snapshot } from "typescript/sync";
 import { ToolError } from "../error.ts";
 import { innermostPackage, isInside, type Workspace, type WorkspacePackage } from "./workspace.ts";
 
@@ -15,7 +15,7 @@ export interface AnalyzedSource {
 
 export interface CompilerSession {
   readonly api: API;
-  readonly configs: readonly string[];
+  readonly snapshot: Snapshot;
   readonly sources: readonly AnalyzedSource[];
 }
 
@@ -33,8 +33,7 @@ interface SourceCandidate {
 }
 
 const CONFIG_FILE = "tsconfig.json";
-const FILES_PER_SNAPSHOT = 1000;
-const COMPILER_MEMORY_TARGET = "1100MiB";
+const TREES_KEPT_BY_THE_CLIENT = 200;
 const SOURCE_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"];
 const DECLARATION_EXTENSIONS = [".d.ts", ".d.mts", ".d.cts"];
 
@@ -45,7 +44,6 @@ export function openCompiler(workspace: Workspace): CompilerSession {
   if (packageConfigs.length === 0) {
     throw new ToolError(`no ${CONFIG_FILE} in the packages of the workspace at ${workspace.root}`);
   }
-  process.env["GOMEMLIMIT"] ??= COMPILER_MEMORY_TARGET;
   const api = new API({ cwd: workspace.root });
   try {
     const configs = withReferencedConfigs(api, packageConfigs);
@@ -57,9 +55,7 @@ export function openCompiler(workspace: Workspace): CompilerSession {
         programs.push({ config, project, package: innermostPackage(workspace, config) });
       }
     }
-    const sources = chosenSources(workspace, programs);
-    snapshot.dispose();
-    return { api, configs, sources };
+    return { api, snapshot, sources: chosenSources(workspace, programs) };
   } catch (error) {
     api.close();
     throw error;
@@ -72,19 +68,18 @@ export function eachTree<Entry extends { readonly source: AnalyzedSource }, Resu
   read: (entry: Entry, tree: SourceFile, checker: Checker, index: number) => Result,
 ): Result[] {
   const results: Result[] = [];
-  for (let start = 0; start < entries.length; start += FILES_PER_SNAPSHOT) {
-    const snapshot = session.api.createSnapshot({ openProjects: session.configs });
-    for (const [offset, entry] of entries.slice(start, start + FILES_PER_SNAPSHOT).entries()) {
-      const project = snapshot.getConfiguredProject(entry.source.config);
-      const tree = project?.program.getSourceFile(entry.source.fileName);
-      if (project === undefined || tree === undefined) {
-        throw new RangeError(`the compiler lost ${entry.source.fileName}`);
-      }
-      results.push(read(entry, tree, project.checker, start + offset));
+  for (const [index, entry] of entries.entries()) {
+    const project = session.snapshot.getConfiguredProject(entry.source.config);
+    const tree = project?.program.getSourceFile(entry.source.fileName);
+    if (project === undefined || tree === undefined) {
+      throw new RangeError(`the compiler lost ${entry.source.fileName}`);
     }
-    snapshot.dispose();
-    session.api.clearSourceFileCache();
+    results.push(read(entry, tree, project.checker, index));
+    if ((index + 1) % TREES_KEPT_BY_THE_CLIENT === 0) {
+      session.api.clearSourceFileCache();
+    }
   }
+  session.api.clearSourceFileCache();
   return results;
 }
 
