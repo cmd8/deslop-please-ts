@@ -57,15 +57,19 @@ function readFile(
 ): ReadFile {
   const names = resolver.resolve(checker, tree);
   const named = namedItems(names);
+  const holders = new Map<Node, Item>();
   const wrappings = declarationsOf(tree).flatMap((declaration): (readonly [DeclarationRecord, BodyWrapping])[] => {
     const record = catalog.placement.declarationAt(tree.path, declaration.node);
     const item = catalog.placement.itemAt(tree.path, declaration.node);
+    if (item !== undefined) {
+      holders.set(declaration.node, item);
+    }
     const wrapping =
       item === undefined ? undefined : wrappingOf(catalog, declaration.node, item, (node) => named.get(node));
     return record === undefined || wrapping === undefined ? [] : [[record, wrapping]];
   });
   return {
-    references: referencesIn({ file, tree }, names, catalog),
+    references: referencesIn({ file, tree, holders }, names),
     wrappings,
   };
 }

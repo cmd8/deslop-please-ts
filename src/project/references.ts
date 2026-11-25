@@ -8,6 +8,7 @@ import { widestShape } from "./valueShape.ts";
 export interface FileContext {
   readonly file: CodeFile;
   readonly tree: SourceFile;
+  readonly holders: ReadonlyMap<Node, Item>;
 }
 
 export interface PendingReference {
@@ -17,7 +18,7 @@ export interface PendingReference {
   readonly callUse: AccessUse | undefined;
 }
 
-export function referencesIn(context: FileContext, names: readonly ResolvedName[], catalog: Catalog): PendingReference[] {
+export function referencesIn(context: FileContext, names: readonly ResolvedName[]): PendingReference[] {
   const holderAt = new Map<Node, Item | undefined>();
   const holderOf = (node: Node): Item | undefined => {
     const visited: Node[] = [];
@@ -28,7 +29,7 @@ export function referencesIn(context: FileContext, names: readonly ResolvedName[
         break;
       }
       visited.push(at);
-      found = catalog.placement.itemAt(context.tree.path, at);
+      found = context.holders.get(at);
       if (found !== undefined || at === context.tree) {
         break;
       }

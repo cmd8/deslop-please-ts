@@ -572,6 +572,24 @@ describe("the references", () => {
     assert.deepEqual(from("src/ring.ts"), [["RunQueue.push", "RunQueue.items", 4, "sample/src/ring", false]]);
   });
 
+  test("names reach enum members and a default export without a name", () => {
+    const model = readSample({
+      "src/kinds.ts": "export enum Mode { Idle, Busy }\nexport default function () { return 1; }\n",
+      "src/app.ts": [
+        'import pick, { Mode } from "./kinds.ts";',
+        "export function run(): number {",
+        "  return pick() + (Mode.Busy === Mode.Idle ? 1 : 0);",
+        "}",
+      ].join("\n"),
+    });
+    assert.deepEqual(
+      model.references
+        .filter((reference) => nameOf(reference.holder) === "run")
+        .map((reference) => nameOf(reference.item)),
+      ["default", "Mode", "Mode.Busy", "Mode", "Mode.Idle"],
+    );
+  });
+
   test("names reach their item through renamed, default and namespace imports and through re-exports", () => {
     const model = readSample({
       "src/ring.ts": "export class RunQueue {}\nexport default function fresh(): RunQueue { return new RunQueue(); }\n",

@@ -91,6 +91,7 @@ const CONSTRUCTOR = "constructor";
 export function recordSource(api: API, checker: Checker, shapes: ShapeReader, tree: SourceFile): SourceRecord {
   const declarations = declarationsOf(tree);
   const symbols = symbolsOfNames(checker, declarations);
+  const unnamedSymbols = symbolsOfUnnamed(api, checker, declarations);
   const inherited = inheritedMemberNames(api, checker, classesOf(declarations));
   const fields = declarations.flatMap((declaration) => {
     const symbol = symbols.get(declaration);
@@ -106,9 +107,10 @@ export function recordSource(api: API, checker: Checker, shapes: ShapeReader, tr
   for (const declaration of declarations) {
     const handles = symbols.get(declaration)?.declarations ?? [];
     const key = nodeKey(declaration.node);
-    const own = handles.find(
-      (handle) => handle.path === tree.path && handle.kind === declaration.node.kind && sameKey(handle.resolve(), key),
-    );
+    const ownHandles = handles.length > 0 ? handles : (unnamedSymbols.get(declaration)?.declarations ?? []);
+    const candidates = ownHandles.filter((handle) => handle.path === tree.path && handle.kind === declaration.node.kind);
+    const own =
+      candidates.length === 1 ? candidates[0] : candidates.find((handle) => sameKey(handle.resolve(), key));
     const first = handles[0];
     const parts = functionPartsOf(declaration.node);
     const elsewhere = first !== undefined && first !== own;
@@ -237,6 +239,23 @@ function classesOf(declarations: readonly Declaration[]): ClassDeclaration[] {
   return [
     ...new Set(declarations.flatMap((declaration) => (declaration.memberOf === undefined ? [] : [declaration.memberOf]))),
   ];
+}
+
+function symbolsOfUnnamed(
+  api: API,
+  checker: Checker,
+  declarations: readonly Declaration[],
+): Map<Declaration, CompilerSymbol> {
+  const unnamed = declarations.filter((declaration) => declaration.symbolName === undefined);
+  const found = api.batch(...unnamed.map((declaration) => checker.getSymbolOfNode.gen(declaration.node)));
+  const symbols = new Map<Declaration, CompilerSymbol>();
+  unnamed.forEach((declaration, index) => {
+    const symbol = found[index];
+    if (symbol !== undefined) {
+      symbols.set(declaration, symbol);
+    }
+  });
+  return symbols;
 }
 
 function symbolsOfNames(checker: Checker, declarations: readonly Declaration[]): Map<Declaration, CompilerSymbol> {
