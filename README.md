@@ -110,11 +110,11 @@ A getter that only hands out a field, and a function that only passes its call o
 
 ## Develop
 
-```bash
-npm run check   # type check
-npm test        # unit tests and end-to-end tests on the projects in tests/fixtures
-npm run self    # the tool on its own code
-```
+| Command | What it runs |
+|---|---|
+| `npm run check` | The type check. |
+| `npm test` | The unit tests and the end-to-end tests on the projects in `tests/fixtures`. |
+| `npm run self` | The tool on its own code. |
 
 ## License
 
