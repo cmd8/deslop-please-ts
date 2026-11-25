@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { TreeNode } from "../model/index.ts";
 import { Sample } from "../model/sample.ts";
+import type { Location } from "./diagnostic.ts";
 import { holders, layout } from "./layout.ts";
 
 function letters(count: number): string[] {
@@ -44,7 +45,7 @@ test("a wide directory is found where the file that stands for it is", () => {
     sample.file(store, `src/store/${name}.ts`, 1);
     sample.file(store, `tests/${name}.ts`, 1);
   }
-  const location = (key: string): unknown => layout(sample.model, undefined).find((d) => d.key === key)?.location;
+  const location = (key: string): Location | undefined => layout(sample.model, undefined).find((d) => d.key === key)?.location;
   assert.deepEqual(location("src/store/"), { file: "src/store.ts", line: 1 });
   assert.equal(location("tests/"), undefined);
   assert.ok(layout(sample.model, undefined).some((d) => d.key === "tests/"));

@@ -25,7 +25,7 @@ import {
   SyntaxKind,
   type Node,
 } from "typescript/ast";
-import { nodeIndex, wrappedExpression } from "./syntax.ts";
+import { wrappedExpression } from "./syntax.ts";
 import type { ValueShape } from "./valueShape.ts";
 
 export type AccessUse = "writes" | "reachesInto" | "tests" | "calls" | "takesValue";
@@ -178,5 +178,5 @@ function isTestedAt(at: Node): boolean {
 }
 
 function same(a: Node, b: Node): boolean {
-  return a === b || (a.kind === b.kind && nodeIndex(a) === nodeIndex(b));
+  return a === b;
 }

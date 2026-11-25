@@ -1,6 +1,7 @@
 import { existsSync, globSync, readFileSync, realpathSync, statSync } from "node:fs";
 import { basename, dirname, join, relative, sep } from "node:path";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import { ToolError } from "../error.ts";
 
 export interface WorkspacePackage {
@@ -17,6 +18,15 @@ interface PackageManifest {
   readonly name: string | undefined;
   readonly workspaces: readonly string[] | undefined;
 }
+
+const PATTERNS = z.array(z.string());
+
+const PACKAGE_MANIFEST_SCHEMA = z.object({
+  name: z.string().optional(),
+  workspaces: z.union([PATTERNS, z.object({ packages: PATTERNS.optional() })]).optional(),
+});
+
+const PNPM_WORKSPACE_SCHEMA = z.object({ packages: PATTERNS.optional() }).nullable();
 
 const PACKAGE_MANIFEST = "package.json";
 const PNPM_WORKSPACE = "pnpm-workspace.yaml";
@@ -97,32 +107,23 @@ function readManifest(directory: string): PackageManifest | undefined {
   if (!existsSync(path)) {
     return undefined;
   }
-  const json: unknown = parseJson(path);
-  if (!isRecord(json)) {
-    throw new ToolError(`${path} is not a JSON object`);
-  }
+  const manifest = parsedJson(path, PACKAGE_MANIFEST_SCHEMA);
+  const workspaces = manifest.workspaces;
   return {
-    name: typeof json["name"] === "string" ? json["name"] : undefined,
-    workspaces: workspacePatterns(json["workspaces"]),
+    name: manifest.name,
+    workspaces: workspaces === undefined || Array.isArray(workspaces) ? workspaces : workspaces.packages,
   };
 }
 
-function workspacePatterns(value: unknown): readonly string[] | undefined {
-  if (Array.isArray(value)) {
-    return value.filter((pattern) => typeof pattern === "string");
-  }
-  if (isRecord(value)) {
-    return workspacePatterns(value["packages"]);
-  }
-  return undefined;
+function readPnpmPatterns(path: string): readonly string[] {
+  return dataOf(path, PNPM_WORKSPACE_SCHEMA.safeParse(parseYaml(readText(path))))?.packages ?? [];
 }
 
-function readPnpmPatterns(path: string): readonly string[] {
-  const document: unknown = parseYaml(readFileSync(path, "utf8"));
-  if (!isRecord(document)) {
-    return [];
+function dataOf<Data>(path: string, result: z.ZodSafeParseResult<Data>): Data {
+  if (!result.success) {
+    throw new ToolError(`${path} has an unexpected form:\n${z.prettifyError(result.error)}`);
   }
-  return workspacePatterns(document["packages"]) ?? [];
+  return result.data;
 }
 
 function memberDirectories(root: string, patterns: readonly string[]): string[] {
@@ -144,14 +145,25 @@ function withoutTrailingSlash(pattern: string): string {
   return pattern.endsWith("/") ? pattern.slice(0, -1) : pattern;
 }
 
-function parseJson(path: string): unknown {
+function readText(path: string): string {
   try {
-    return JSON.parse(readFileSync(path, "utf8"));
+    return readFileSync(path, "utf8");
   } catch (error) {
-    throw new ToolError(`cannot read ${path}: ${error instanceof Error ? error.message : String(error)}`);
+    if (!(error instanceof Error)) {
+      throw error;
+    }
+    throw new ToolError(`cannot read ${path}: ${error.message}`);
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+function parsedJson<Data>(path: string, schema: z.ZodType<Data>): Data {
+  const text = readText(path);
+  try {
+    return dataOf(path, schema.safeParse(JSON.parse(text)));
+  } catch (error) {
+    if (!(error instanceof SyntaxError)) {
+      throw error;
+    }
+    throw new ToolError(`cannot read ${path}: ${error.message}`);
+  }
 }

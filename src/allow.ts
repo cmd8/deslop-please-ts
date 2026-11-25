@@ -31,7 +31,10 @@ export class AllowList {
     try {
       text = readFileSync(path, "utf8");
     } catch (error) {
-      throw new ToolError(`${path}: ${messageOf(error)}`);
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+      throw new ToolError(`${path}: ${error.message}`);
     }
     const parsed = AllowList.parse(text);
     switch (parsed.kind) {
@@ -65,12 +68,18 @@ export class AllowList {
     try {
       mkdirSync(parent, { recursive: true });
     } catch (error) {
-      throw new ToolError(`${parent}: ${messageOf(error)}`);
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+      throw new ToolError(`${parent}: ${error.message}`);
     }
     try {
       writeFileSync(path, this.toText());
     } catch (error) {
-      throw new ToolError(`${path}: ${messageOf(error)}`);
+      if (!(error instanceof Error)) {
+        throw error;
+      }
+      throw new ToolError(`${path}: ${error.message}`);
     }
   }
 
@@ -88,10 +97,6 @@ export class AllowList {
   fixedCount(diagnostics: readonly Diagnostic[]): number {
     return this.#entries.filter((entry) => !diagnostics.some((diagnostic) => covers(entry, diagnostic))).length;
   }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function covers({ lint, key }: AllowEntry, diagnostic: Diagnostic): boolean {

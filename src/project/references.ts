@@ -3,7 +3,6 @@ import type { CodeFile, Item, Reference, Wrapper } from "../model/index.ts";
 import { accessUseOf, onlyReadsValue, type AccessUse } from "./access.ts";
 import type { Catalog } from "./catalog.ts";
 import type { NameRole, ResolvedName } from "./resolution.ts";
-import { nodeIndex } from "./syntax.ts";
 import { widestShape } from "./valueShape.ts";
 
 export interface FileContext {
@@ -19,24 +18,23 @@ export interface PendingReference {
 }
 
 export function referencesIn(context: FileContext, names: readonly ResolvedName[], catalog: Catalog): PendingReference[] {
-  const holderAt = new Map<number, Item | undefined>();
+  const holderAt = new Map<Node, Item | undefined>();
   const holderOf = (node: Node): Item | undefined => {
-    const visited: number[] = [];
+    const visited: Node[] = [];
     let found: Item | undefined;
     for (let at: Node | undefined = node.parent; at !== undefined; at = at.parent) {
-      const index = nodeIndex(at);
-      if (holderAt.has(index)) {
-        found = holderAt.get(index);
+      if (holderAt.has(at)) {
+        found = holderAt.get(at);
         break;
       }
-      visited.push(index);
-      found = catalog.itemAt(context.tree.path, index);
+      visited.push(at);
+      found = catalog.itemAt(context.tree.path, at);
       if (found !== undefined || at === context.tree) {
         break;
       }
     }
-    for (const index of visited) {
-      holderAt.set(index, found);
+    for (const each of visited) {
+      holderAt.set(each, found);
     }
     return found;
   };
@@ -95,12 +93,12 @@ function readsOnlyValue(pending: PendingReference, catalog: Catalog, wrappers: R
 
 function memberAccessOf(node: Node): Node | undefined {
   const parent = node.parent;
-  return isPropertyAccessExpression(parent) && nodeIndex(parent.name) === nodeIndex(node) ? parent : undefined;
+  return isPropertyAccessExpression(parent) && parent.name === node ? parent : undefined;
 }
 
 function callOf(access: Node): Node | undefined {
   const parent = access.parent;
-  return isCallExpression(parent) && nodeIndex(parent.expression) === nodeIndex(access) ? parent : undefined;
+  return isCallExpression(parent) && parent.expression === access ? parent : undefined;
 }
 
 function isPropertyLike(catalog: Catalog, item: Item): boolean {

@@ -11,9 +11,9 @@ export type ParsedArguments =
   | { readonly kind: "options"; readonly options: Options }
   | { readonly kind: "usage-error"; readonly message: string };
 
-const FLAGS = ["--allow", "--update-allow"] as const;
+type Flag = "--allow" | "--update-allow";
 
-type Flag = (typeof FLAGS)[number];
+const FLAGS: readonly Flag[] = ["--allow", "--update-allow"];
 
 const HELP_WORDS = new Set(["-h", "--help", "help"]);
 

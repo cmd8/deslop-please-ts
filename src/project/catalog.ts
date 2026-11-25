@@ -10,24 +10,25 @@ import type { API, Checker, Symbol as CompilerSymbol } from "typescript/sync";
 import type { CodeFile, Item, ItemKind } from "../model/index.ts";
 import { declarationsOf, type Declaration } from "./declarations.ts";
 import { inheritedMemberNames } from "./inheritance.ts";
-import { functionPartsOf, nodeIndex } from "./syntax.ts";
+import { functionPartsOf, nodeKey } from "./syntax.ts";
 import type { ShapeReader, ValueShape } from "./valueShape.ts";
 
 export type DeclarationForm = "method" | "accessor" | "other";
 
-export interface NodeAt {
+export interface HandleAt {
   readonly path: string;
   readonly index: number;
 }
 
 export interface DeclarationRecord {
-  readonly index: number;
+  readonly key: string;
+  readonly handleIndex: number | undefined;
   readonly name: string;
   readonly memberName: string;
   readonly kind: ItemKind;
   readonly parent: DeclarationRecord | undefined;
   readonly takesThis: boolean;
-  readonly firstElsewhere: NodeAt | undefined;
+  readonly firstElsewhere: HandleAt | undefined;
   readonly implementsInheritedMember: boolean;
   readonly shape: ValueShape | undefined;
   readonly form: DeclarationForm;
@@ -51,26 +52,38 @@ export class Catalog {
   readonly memberNames: ReadonlySet<string>;
   readonly fieldShapes: ReadonlyMap<Item, ValueShape>;
   readonly constructorOf: ReadonlyMap<Item, Item>;
-  readonly #placed: ReadonlyMap<string, ReadonlyMap<number, Placed>>;
+  readonly #placed: ReadonlyMap<string, ReadonlyMap<string, Placed>>;
+  readonly #declaredBy: ReadonlyMap<string, ReadonlyMap<number, Item>>;
 
-  constructor(
-    parts: CatalogParts,
-    placed: ReadonlyMap<string, ReadonlyMap<number, Placed>>,
-  ) {
+  constructor(parts: CatalogParts, placed: ReadonlyMap<string, ReadonlyMap<string, Placed>>) {
     this.items = parts.items;
     this.declarationsOf = parts.declarationsOf;
     this.memberNames = parts.memberNames;
     this.fieldShapes = parts.fieldShapes;
     this.constructorOf = parts.constructorOf;
     this.#placed = placed;
+    this.#declaredBy = new Map(
+      [...placed].map(([path, inFile]) => [
+        path,
+        new Map(
+          [...inFile.values()].flatMap(({ declaration, item }): [number, Item][] =>
+            declaration.handleIndex === undefined ? [] : [[declaration.handleIndex, item]],
+          ),
+        ),
+      ]),
+    );
   }
 
-  itemAt(path: string, index: number): Item | undefined {
-    return this.#placed.get(path)?.get(index)?.item;
+  itemAt(path: string, node: Node): Item | undefined {
+    return this.#placed.get(path)?.get(nodeKey(node))?.item;
   }
 
-  declarationAt(path: string, index: number): DeclarationRecord | undefined {
-    return this.#placed.get(path)?.get(index)?.declaration;
+  declarationAt(path: string, node: Node): DeclarationRecord | undefined {
+    return this.#placed.get(path)?.get(nodeKey(node))?.declaration;
+  }
+
+  itemDeclaredBy(handle: HandleAt): Item | undefined {
+    return this.#declaredBy.get(handle.path)?.get(handle.index);
   }
 }
 
@@ -100,12 +113,17 @@ export function recordSource(api: API, checker: Checker, shapes: ShapeReader, tr
   });
   const records = new Map<Declaration, DeclarationRecord>();
   for (const declaration of declarations) {
-    const first = symbols.get(declaration)?.declarations[0];
+    const handles = symbols.get(declaration)?.declarations ?? [];
+    const key = nodeKey(declaration.node);
+    const own = handles.find(
+      (handle) => handle.path === tree.path && handle.kind === declaration.node.kind && sameKey(handle.resolve(), key),
+    );
+    const first = handles[0];
     const parts = functionPartsOf(declaration.node);
-    const index = nodeIndex(declaration.node);
-    const elsewhere = first !== undefined && (first.path !== tree.path || first.index !== index);
+    const elsewhere = first !== undefined && first !== own;
     records.set(declaration, {
-      index,
+      key,
+      handleIndex: own?.index,
       name: declaration.name,
       memberName: declaration.memberName,
       kind: declaration.kind,
@@ -139,7 +157,11 @@ export function catalogItems(sources: readonly FiledRecord[]): Catalog {
   const byPath = new Map(
     sources.map(({ record, file }) => [
       record.path,
-      new Map(record.declarations.map((declaration) => [declaration.index, { declaration, file }])),
+      new Map(
+        record.declarations.flatMap((declaration): [number, FiledDeclaration][] =>
+          declaration.handleIndex === undefined ? [] : [[declaration.handleIndex, { declaration, file }]],
+        ),
+      ),
     ]),
   );
   const canonicalOf = (filed: FiledDeclaration): FiledDeclaration => {
@@ -173,15 +195,15 @@ export function catalogItems(sources: readonly FiledRecord[]): Catalog {
   );
   const items = canonical.map(itemFor);
 
-  const placed = new Map<string, Map<number, Placed>>();
+  const placed = new Map<string, Map<string, Placed>>();
   const declarationsOf = new Map<Item, DeclarationRecord[]>();
   for (const { record, file } of sources) {
-    const inFile = new Map<number, Placed>();
+    const inFile = new Map<string, Placed>();
     placed.set(record.path, inFile);
     for (const declaration of record.declarations) {
       const item = itemOfCanonical.get(canonicalOf({ declaration, file }).declaration);
       if (item !== undefined) {
-        inFile.set(declaration.index, { declaration, item });
+        inFile.set(declaration.key, { declaration, item });
         const declarations = declarationsOf.get(item) ?? [];
         declarationsOf.set(item, declarations);
         declarations.push(declaration);
@@ -209,6 +231,10 @@ export function catalogItems(sources: readonly FiledRecord[]): Catalog {
     },
     placed,
   );
+}
+
+function sameKey(node: Node | undefined, key: string): boolean {
+  return node !== undefined && nodeKey(node) === key;
 }
 
 function formOf(node: Node): DeclarationForm {

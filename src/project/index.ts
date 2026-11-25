@@ -1,4 +1,4 @@
-import type { SourceFile } from "typescript/ast";
+import type { Node, SourceFile } from "typescript/ast";
 import type { Checker } from "typescript/sync";
 import type { CodeFile, Item, Model } from "../model/index.ts";
 import { catalogItems, recordSource, type Catalog, type DeclarationRecord } from "./catalog.ts";
@@ -7,7 +7,6 @@ import { layOut, lineCount } from "./layout.ts";
 import { eachTree, openCompiler } from "./programs.ts";
 import { finishedReference, referencesIn, type PendingReference } from "./references.ts";
 import { NameResolver, type ResolvedName } from "./resolution.ts";
-import { nodeIndex } from "./syntax.ts";
 import { ShapeReader } from "./valueShape.ts";
 import { assembleWrappers, wrappingOf, type BodyWrapping } from "./wrappers.ts";
 import { findWorkspace } from "./workspace.ts";
@@ -59,11 +58,10 @@ function readFile(
   const names = resolver.resolve(checker, tree);
   const named = namedItems(names);
   const wrappings = declarationsOf(tree).flatMap((declaration): (readonly [DeclarationRecord, BodyWrapping])[] => {
-    const index = nodeIndex(declaration.node);
-    const record = catalog.declarationAt(tree.path, index);
-    const item = catalog.itemAt(tree.path, index);
+    const record = catalog.declarationAt(tree.path, declaration.node);
+    const item = catalog.itemAt(tree.path, declaration.node);
     const wrapping =
-      item === undefined ? undefined : wrappingOf(catalog, declaration.node, item, (node) => named.get(nodeIndex(node)));
+      item === undefined ? undefined : wrappingOf(catalog, declaration.node, item, (node) => named.get(node));
     return record === undefined || wrapping === undefined ? [] : [[record, wrapping]];
   });
   return {
@@ -72,12 +70,11 @@ function readFile(
   };
 }
 
-function namedItems(names: readonly ResolvedName[]): Map<number, Item> {
-  const items = new Map<number, Item>();
+function namedItems(names: readonly ResolvedName[]): Map<Node, Item> {
+  const items = new Map<Node, Item>();
   for (const name of names) {
-    const index = nodeIndex(name.node);
-    if (name.role === "named" && !items.has(index)) {
-      items.set(index, name.item);
+    if (name.role === "named" && !items.has(name.node)) {
+      items.set(name.node, name.item);
     }
   }
   return items;

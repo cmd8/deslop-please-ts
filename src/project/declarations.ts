@@ -22,7 +22,7 @@ import {
   isTypeAliasDeclaration,
   isTypeLiteralNode,
   isVariableStatement,
-  SyntaxKind,
+  ModifierFlags,
   type BindingName,
   type ClassDeclaration,
   type Node,
@@ -30,7 +30,7 @@ import {
   type Statement,
 } from "typescript/ast";
 import type { ItemKind } from "../model/index.ts";
-import { hasModifier, isFunctionValue, isNameNode, isStatic, propertyNameText, withoutParentheses } from "./syntax.ts";
+import { isFunctionValue, isNameNode, isStatic, propertyNameText, withoutParentheses } from "./syntax.ts";
 
 export interface Declaration {
   readonly node: Node;
@@ -50,13 +50,8 @@ interface Scope {
 }
 
 const DEFAULT_EXPORT = "default";
-const PARAMETER_PROPERTY_MODIFIERS = [
-  SyntaxKind.PublicKeyword,
-  SyntaxKind.PrivateKeyword,
-  SyntaxKind.ProtectedKeyword,
-  SyntaxKind.ReadonlyKeyword,
-  SyntaxKind.OverrideKeyword,
-];
+const PARAMETER_PROPERTY_MODIFIERS =
+  ModifierFlags.Public | ModifierFlags.Private | ModifierFlags.Protected | ModifierFlags.Readonly | ModifierFlags.Override;
 
 export function declarationsOf(sourceFile: SourceFile): Declaration[] {
   const found: Declaration[] = [];
@@ -170,7 +165,7 @@ function collectClassMembers(type: ClassDeclaration, declaration: Declaration, f
       constructorSeen = true;
       found.push(memberDeclaration(member, "constructor", "function", scope, false, undefined));
       for (const parameter of member.parameters) {
-        if (isIdentifier(parameter.name) && PARAMETER_PROPERTY_MODIFIERS.some((kind) => hasModifier(parameter, kind))) {
+        if (isIdentifier(parameter.name) && (parameter.modifierFlags & PARAMETER_PROPERTY_MODIFIERS) !== 0) {
           found.push(memberDeclaration(parameter, parameter.name.text, "field", scope, false, parameter.name));
         }
       }

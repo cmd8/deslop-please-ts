@@ -1,20 +1,41 @@
 import {
   isBindingElement,
+  isClassDeclaration,
+  isClassExpression,
+  isEnumDeclaration,
+  isEnumMember,
   isExportAssignment,
   isExportDeclaration,
+  isFunctionDeclaration,
+  isFunctionExpression,
+  isGetAccessorDeclaration,
   isIdentifier,
+  isImportClause,
   isImportDeclaration,
   isImportEqualsDeclaration,
+  isInterfaceDeclaration,
   isJsxAttribute,
   isJsxAttributes,
+  isMethodDeclaration,
+  isMethodSignatureDeclaration,
+  isModuleDeclaration,
   isNamedImports,
+  isNamedTupleMember,
+  isNamespaceExport,
   isNamespaceImport,
   isNewExpression,
   isObjectBindingPattern,
+  isParameterDeclaration,
   isPrivateIdentifier,
   isPropertyAccessExpression,
+  isPropertyAssignment,
+  isPropertyDeclaration,
+  isPropertySignatureDeclaration,
+  isSetAccessorDeclaration,
   isShorthandPropertyAssignment,
-  SyntaxKind,
+  isTypeAliasDeclaration,
+  isTypeParameterDeclaration,
+  isVariableDeclaration,
   type BindingElement,
   type JsxAttributes,
   type Node,
@@ -24,7 +45,7 @@ import {
 import { SymbolFlags, type API, type Checker, type Symbol as CompilerSymbol, type Type } from "typescript/sync";
 import type { Item } from "../model/index.ts";
 import type { Catalog } from "./catalog.ts";
-import { nodeIndex, propertyNameText, withoutParentheses } from "./syntax.ts";
+import { propertyNameText, withoutParentheses } from "./syntax.ts";
 
 export type NameRole = "named" | "destructured";
 
@@ -49,34 +70,6 @@ interface NamesToResolve {
   readonly shorthands: Node[];
   readonly propertyReads: PropertyRead[];
 }
-
-const DECLARATION_KINDS = new Set<SyntaxKind>([
-  SyntaxKind.ClassDeclaration,
-  SyntaxKind.ClassExpression,
-  SyntaxKind.InterfaceDeclaration,
-  SyntaxKind.TypeAliasDeclaration,
-  SyntaxKind.EnumDeclaration,
-  SyntaxKind.EnumMember,
-  SyntaxKind.FunctionDeclaration,
-  SyntaxKind.FunctionExpression,
-  SyntaxKind.MethodDeclaration,
-  SyntaxKind.MethodSignature,
-  SyntaxKind.PropertyDeclaration,
-  SyntaxKind.PropertySignature,
-  SyntaxKind.GetAccessor,
-  SyntaxKind.SetAccessor,
-  SyntaxKind.Parameter,
-  SyntaxKind.VariableDeclaration,
-  SyntaxKind.BindingElement,
-  SyntaxKind.TypeParameter,
-  SyntaxKind.ModuleDeclaration,
-  SyntaxKind.PropertyAssignment,
-  SyntaxKind.NamedTupleMember,
-  SyntaxKind.ImportClause,
-  SyntaxKind.NamespaceImport,
-  SyntaxKind.ImportEqualsDeclaration,
-  SyntaxKind.NamespaceExport,
-]);
 
 export class NameResolver {
   readonly #api: API;
@@ -118,7 +111,7 @@ export class NameResolver {
     names.named.forEach((node, index) => add(node, named[index], "named"));
     names.shorthands.forEach((node, index) => add(node, shorthandValues[index], "named"));
     typed.forEach((read, index) => add(read.node, properties[index], read.owner.kind === "destructured" ? "destructured" : "named"));
-    return resolved.sort((a, b) => nodeIndex(a.node) - nodeIndex(b.node));
+    return resolved.sort((a, b) => a.node.pos - b.node.pos);
   }
 
   #ownerTypes(checker: Checker, reads: readonly PropertyRead[]): Map<PropertyOwner, Type> {
@@ -167,7 +160,7 @@ export class NameResolver {
 
   #itemDeclaring(symbol: CompilerSymbol): Item | undefined {
     const first = symbol.declarations[0];
-    return first === undefined ? undefined : this.#catalog.itemAt(first.path, first.index);
+    return first === undefined ? undefined : this.#catalog.itemDeclaredBy(first);
   }
 
   #aliasTargetsOf(checker: Checker): Map<number, Item | undefined> {
@@ -184,7 +177,7 @@ export class NameResolver {
     const memberNames = this.#catalog.memberNames;
     const wanted = (name: string) => memberNames.has(name) || imported.has(name);
     const names: NamesToResolve = { named: [], shorthands: [], propertyReads: [] };
-    const jsxOwners = new Map<number, PropertyOwner>();
+    const jsxOwners = new Map<Node, PropertyOwner>();
     const visit = (node: Node): void => {
       if (isOutsideCode(node)) {
         return;
@@ -197,8 +190,8 @@ export class NameResolver {
       }
       if (isJsxAttribute(node) && isJsxAttributes(node.parent) && isIdentifier(node.name) && wanted(node.name.text)) {
         const attributes = node.parent;
-        const owner = jsxOwners.get(nodeIndex(attributes)) ?? { kind: "jsxAttribute", attributes };
-        jsxOwners.set(nodeIndex(attributes), owner);
+        const owner = jsxOwners.get(attributes) ?? { kind: "jsxAttribute", attributes };
+        jsxOwners.set(attributes, owner);
         names.propertyReads.push({ node: node.name, owner, property: node.name.text });
       }
       if ((isIdentifier(node) || isPrivateIdentifier(node)) && wanted(node.text)) {
@@ -213,16 +206,16 @@ export class NameResolver {
 
 function isConstructed(node: Node): boolean {
   const parent = node.parent;
-  const callee = isPropertyAccessExpression(parent) && sameNode(parent.name, node) ? parent : node;
+  const callee = isPropertyAccessExpression(parent) && parent.name === node ? parent : node;
   const call = callee.parent;
-  return isNewExpression(call) && sameNode(call.expression, callee);
+  return isNewExpression(call) && call.expression === callee;
 }
 
 function collectName(node: Node, names: NamesToResolve): void {
   const parent = node.parent;
-  if (isShorthandPropertyAssignment(parent) && sameNode(parent.name, node)) {
+  if (isShorthandPropertyAssignment(parent) && parent.name === node) {
     names.shorthands.push(node);
-  } else if (isJsxAttribute(parent) && sameNode(parent.name, node)) {
+  } else if (isJsxAttribute(parent) && parent.name === node) {
     return;
   } else if (isBindingElement(parent) && isObjectBindingPattern(parent.parent) && isBindingElementName(parent, node)) {
     return;
@@ -233,8 +226,8 @@ function collectName(node: Node, names: NamesToResolve): void {
 
 function isBindingElementName(element: BindingElement, node: Node): boolean {
   return (
-    (element.name !== undefined && sameNode(element.name, node)) ||
-    (element.propertyName !== undefined && sameNode(element.propertyName, node))
+    (element.name !== undefined && element.name === node) ||
+    (element.propertyName !== undefined && element.propertyName === node)
   );
 }
 
@@ -266,20 +259,40 @@ function isOutsideCode(node: Node): boolean {
 }
 
 function isDeclarationName(node: Node): boolean {
-  const parent = node.parent;
-  if (!DECLARATION_KINDS.has(parent.kind)) {
-    return false;
+  return declaredName(node.parent) === node;
+}
+
+function declaredName(node: Node): Node | undefined {
+  if (
+    isClassDeclaration(node) ||
+    isClassExpression(node) ||
+    isInterfaceDeclaration(node) ||
+    isTypeAliasDeclaration(node) ||
+    isEnumDeclaration(node) ||
+    isEnumMember(node) ||
+    isFunctionDeclaration(node) ||
+    isFunctionExpression(node) ||
+    isMethodDeclaration(node) ||
+    isMethodSignatureDeclaration(node) ||
+    isPropertyDeclaration(node) ||
+    isPropertySignatureDeclaration(node) ||
+    isGetAccessorDeclaration(node) ||
+    isSetAccessorDeclaration(node) ||
+    isParameterDeclaration(node) ||
+    isVariableDeclaration(node) ||
+    isBindingElement(node) ||
+    isTypeParameterDeclaration(node) ||
+    isModuleDeclaration(node) ||
+    isPropertyAssignment(node) ||
+    isNamedTupleMember(node) ||
+    isImportClause(node) ||
+    isNamespaceImport(node) ||
+    isImportEqualsDeclaration(node) ||
+    isNamespaceExport(node)
+  ) {
+    return node.name;
   }
-  const name: unknown = Reflect.get(parent, "name");
-  return typeof name === "object" && name !== null && sameNode(name, node);
-}
-
-function sameNode(a: object, b: Node): boolean {
-  return a === b || (isNode(a) && nodeIndex(a) === nodeIndex(b) && a.kind === b.kind);
-}
-
-function isNode(value: object): value is Node {
-  return "kind" in value && "parent" in value;
+  return undefined;
 }
 
 function importedNames(sourceFile: SourceFile): Set<string> {

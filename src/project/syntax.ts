@@ -20,17 +20,14 @@ import {
   isSatisfiesExpression,
   isStringLiteral,
   isTypeAssertion,
-  SyntaxKind,
+  ModifierFlags,
+  type ModifiersBase,
   type Node,
   type ParameterDeclaration,
 } from "typescript/ast";
 
-export function nodeIndex(node: Node): number {
-  const index: unknown = Reflect.get(node, "index");
-  if (typeof index !== "number") {
-    throw new TypeError("a syntax node without an index");
-  }
-  return index;
+export function nodeKey(node: Node): string {
+  return `${node.kind}:${node.pos}:${node.end}`;
 }
 
 export function wrappedExpression(node: Node): Node | undefined {
@@ -59,13 +56,8 @@ export function isFunctionValue(node: Node | undefined): boolean {
   return isArrowFunction(value) || isFunctionExpression(value);
 }
 
-export function hasModifier(node: Node, modifier: SyntaxKind): boolean {
-  const modifiers: unknown = Reflect.get(node, "modifiers");
-  return Array.isArray(modifiers) && modifiers.some((each: Node) => each.kind === modifier);
-}
-
-export function isStatic(node: Node): boolean {
-  return hasModifier(node, SyntaxKind.StaticKeyword);
+export function isStatic(node: ModifiersBase): boolean {
+  return (node.modifierFlags & ModifierFlags.Static) !== 0;
 }
 
 export function propertyNameText(name: Node): string {

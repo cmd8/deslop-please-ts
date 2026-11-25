@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { after, describe, test } from "node:test";
 import { ToolError } from "../error.ts";
 import type { Item, Model } from "../model/index.ts";
@@ -109,23 +109,19 @@ function modules(model: Model): string[] {
     .map((node) => `${model.tree.display(node)}${node.test ? " (test)" : ""}`);
 }
 
+function everyDirectoryIn(parent: string): string {
+  return posix.join(parent, "*");
+}
+
 describe("the workspace", () => {
   test("outside a project is an error", () => {
     const empty = directoryWith({ "notes.txt": "" });
-    assert.throws(() => readProject(empty), (error: unknown) => {
-      assert.ok(error instanceof ToolError);
-      assert.match(error.message, /^not inside a TypeScript project/);
-      return true;
-    });
+    assert.throws(() => readProject(empty), { name: ToolError.name, message: /^not inside a TypeScript project/ });
   });
 
   test("a project without any tsconfig.json is an error", () => {
     const root = directoryWith({ "package.json": SAMPLE_MANIFEST, "src/a.ts": "export const a = 1;\n" });
-    assert.throws(() => readProject(root), (error: unknown) => {
-      assert.ok(error instanceof ToolError);
-      assert.match(error.message, /tsconfig\.json/);
-      return true;
-    });
+    assert.throws(() => readProject(root), { name: ToolError.name, message: /tsconfig\.json/ });
   });
 
   test("a working directory below the root reads the whole project", () => {
@@ -141,7 +137,7 @@ describe("the workspace", () => {
     const member = (name: string | undefined) => (name === undefined ? "{}" : JSON.stringify({ name }));
     const model = readProject(
       directoryWith({
-        "package.json": JSON.stringify({ name: "monorepo", workspaces: ["packages/*", "!packages/ignored"] }),
+        "package.json": JSON.stringify({ name: "monorepo", workspaces: [everyDirectoryIn("packages"), "!packages/ignored"] }),
         "packages/core/package.json": member("@acme/core"),
         "packages/core/tsconfig.json": SAMPLE_CONFIG,
         "packages/core/src/a.ts": "export const a = 1;\n",
@@ -167,7 +163,7 @@ describe("the workspace", () => {
   test("pnpm workspace members are packages under the workspace when the root has no package.json", () => {
     const model = readProject(
       directoryWith({
-        "pnpm-workspace.yaml": "packages:\n  - 'apps/*'\n  - libs/shared\n",
+        "pnpm-workspace.yaml": `packages:\n  - '${everyDirectoryIn("apps")}'\n  - libs/shared\n`,
         "apps/web/package.json": JSON.stringify({ name: "web" }),
         "apps/web/tsconfig.json": SAMPLE_CONFIG,
         "apps/web/src/main.ts": "export const main = 1;\n",
@@ -575,7 +571,7 @@ describe("the references", () => {
         'import * as ring from "./ring.ts";',
         'import { Queue } from "./relay.ts";',
         'import { RunQueue as Renamed } from "./ring.ts";',
-        "export function run(): unknown[] {",
+        "export function run() {",
         "  return [fresh(), new ring.RunQueue(), new Queue(), new Renamed()];",
         "}",
       ].join("\n"),
@@ -596,7 +592,7 @@ describe("the references", () => {
       ].join("\n"),
       "src/app.ts": [
         'import * as ring from "./ring.ts";',
-        "export function make(): unknown[] {",
+        "export function make() {",
         "  return [new ring.Sized(3), new ring.Plain()];",
         "}",
       ].join("\n"),
@@ -679,7 +675,7 @@ describe("what code does with a field", () => {
     ].join("\n"),
     "src/use.ts": [
       'import type { Inner, State } from "./state.ts";',
-      "declare function take(value: unknown): void;",
+      "declare function take<Value>(value: Value): void;",
       "export function writes(state: State): void {",
       "  state.count = 1;",
       "  state.count += 1;",
@@ -813,7 +809,7 @@ describe("the wrappers", () => {
       "  size(): number { return this.#items.length; }",
       "  static count(queue: Queue): number { return queue.limit; }",
       "}",
-      "export function reader(queue: Queue): unknown[] {",
+      "export function reader(queue: Queue) {",
       "  return [queue.items.length, queue.items, queue.headNow().toFixed(), queue.head, queue.parts(), addBoth(1, 2)];",
       "}",
     ].join("\n"),

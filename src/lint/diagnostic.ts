@@ -1,13 +1,13 @@
-export const LINTS = [
+export type Lint = "module-cycle" | "tangle" | "field-leak" | "shallow-module" | "wide-directory" | "long-file";
+
+export const LINTS: readonly Lint[] = [
   "module-cycle",
   "tangle",
   "field-leak",
   "shallow-module",
   "wide-directory",
   "long-file",
-] as const;
-
-export type Lint = (typeof LINTS)[number];
+];
 
 export function parseLint(name: string): Lint | undefined {
   return LINTS.find((lint) => lint === name);

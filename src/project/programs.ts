@@ -43,7 +43,7 @@ export function openCompiler(workspace: Workspace): CompilerSession {
     .map((member) => join(member.directory, CONFIG_FILE))
     .filter((config) => existsSync(config));
   if (packageConfigs.length === 0) {
-    throw new ToolError(`no ${CONFIG_FILE} in any package of the workspace at ${workspace.root}`);
+    throw new ToolError(`no ${CONFIG_FILE} in the packages of the workspace at ${workspace.root}`);
   }
   process.env["GOMEMLIMIT"] ??= COMPILER_MEMORY_TARGET;
   const api = new API({ cwd: workspace.root });
