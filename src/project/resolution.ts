@@ -5,6 +5,8 @@ import {
   isIdentifier,
   isImportDeclaration,
   isImportEqualsDeclaration,
+  isJsxAttribute,
+  isJsxAttributes,
   isNamedImports,
   isNamespaceImport,
   isObjectBindingPattern,
@@ -13,6 +15,7 @@ import {
   isShorthandPropertyAssignment,
   SyntaxKind,
   type BindingElement,
+  type JsxAttributes,
   type Node,
   type ObjectBindingPattern,
   type SourceFile,
@@ -31,16 +34,20 @@ export interface ResolvedName {
   readonly role: NameRole;
 }
 
-interface Destructuring {
+type PropertyOwner =
+  | { readonly kind: "destructured"; readonly pattern: ObjectBindingPattern }
+  | { readonly kind: "jsxAttribute"; readonly attributes: JsxAttributes };
+
+interface PropertyRead {
   readonly node: Node;
-  readonly pattern: ObjectBindingPattern;
+  readonly owner: PropertyOwner;
   readonly property: string;
 }
 
 interface NamesToResolve {
   readonly named: Node[];
   readonly shorthands: Node[];
-  readonly destructurings: Destructuring[];
+  readonly propertyReads: PropertyRead[];
 }
 
 const DECLARATION_KINDS = new Set<SyntaxKind>([
@@ -88,23 +95,15 @@ export class NameResolver {
     const shorthandValues = this.#api.batch(
       ...names.shorthands.map((node) => checker.getShorthandAssignmentValueSymbol.gen(node.parent)),
     );
-    const patterns = [...new Set(names.destructurings.map((each) => each.pattern))];
-    const patternTypes = new Map<ObjectBindingPattern, Type>();
-    if (patterns.length > 0) {
-      checker.getTypeAtLocation(patterns).forEach((type, index) => {
-        const pattern = patterns[index];
-        if (pattern !== undefined) {
-          patternTypes.set(pattern, type);
-        }
-      });
-    }
-    const destructured = this.#api.batch(
-      ...names.destructurings.flatMap((each) => {
-        const type = patternTypes.get(each.pattern);
-        return type === undefined ? [] : [checker.getPropertyOfType.gen(type, each.property)];
+    const ownerTypes = this.#ownerTypes(checker, names.propertyReads);
+    const typed = names.propertyReads.filter((read) => ownerTypes.has(read.owner));
+    const properties = this.#api.batch(
+      ...typed.flatMap((read) => {
+        const type = ownerTypes.get(read.owner);
+        return type === undefined ? [] : [checker.getPropertyOfType.gen(type, read.property)];
       }),
     );
-    const typed = names.destructurings.filter((each) => patternTypes.has(each.pattern));
+    this.#followAliases(checker, [...named, ...shorthandValues]);
     const resolved: ResolvedName[] = [];
     const add = (node: Node, symbol: CompilerSymbol | undefined, role: NameRole) => {
       const item = symbol === undefined ? undefined : this.#itemOf(checker, symbol);
@@ -112,11 +111,34 @@ export class NameResolver {
         resolved.push({ node, item, role });
       }
     };
-    this.#followAliases(checker, [...named, ...shorthandValues]);
     names.named.forEach((node, index) => add(node, named[index], "named"));
     names.shorthands.forEach((node, index) => add(node, shorthandValues[index], "named"));
-    typed.forEach((each, index) => add(each.node, destructured[index], "destructured"));
+    typed.forEach((read, index) => add(read.node, properties[index], read.owner.kind === "destructured" ? "destructured" : "named"));
     return resolved.sort((a, b) => nodeIndex(a.node) - nodeIndex(b.node));
+  }
+
+  #ownerTypes(checker: Checker, reads: readonly PropertyRead[]): Map<PropertyOwner, Type> {
+    const owners = [...new Set(reads.map((read) => read.owner))];
+    const types = new Map<PropertyOwner, Type>();
+    const destructured = owners.flatMap((owner) => (owner.kind === "destructured" ? [owner] : []));
+    if (destructured.length > 0) {
+      checker.getTypeAtLocation(destructured.map((owner) => owner.pattern)).forEach((type, index) => {
+        const owner = destructured[index];
+        if (owner !== undefined) {
+          types.set(owner, type);
+        }
+      });
+    }
+    const attributes = owners.flatMap((owner) => (owner.kind === "jsxAttribute" ? [owner] : []));
+    this.#api
+      .batch(...attributes.map((owner) => checker.getContextualType.gen(owner.attributes)))
+      .forEach((type, index) => {
+        const owner = attributes[index];
+        if (owner !== undefined && type !== undefined) {
+          types.set(owner, type);
+        }
+      });
+    return types;
   }
 
   #itemOf(checker: Checker, symbol: CompilerSymbol): ItemId | undefined {
@@ -156,15 +178,23 @@ export class NameResolver {
     const imported = importedNames(sourceFile);
     const memberNames = this.#catalog.memberNames;
     const wanted = (name: string) => memberNames.has(name) || imported.has(name);
-    const names: NamesToResolve = { named: [], shorthands: [], destructurings: [] };
+    const names: NamesToResolve = { named: [], shorthands: [], propertyReads: [] };
+    const jsxOwners = new Map<number, PropertyOwner>();
     const visit = (node: Node): void => {
       if (isOutsideCode(node)) {
         return;
       }
       if (isObjectBindingPattern(node)) {
+        const owner: PropertyOwner = { kind: "destructured", pattern: node };
         for (const element of node.elements) {
-          collectDestructuring(element, node, wanted, names);
+          collectDestructuring(element, owner, wanted, names);
         }
+      }
+      if (isJsxAttribute(node) && isJsxAttributes(node.parent) && isIdentifier(node.name) && wanted(node.name.text)) {
+        const attributes = node.parent;
+        const owner = jsxOwners.get(nodeIndex(attributes)) ?? { kind: "jsxAttribute", attributes };
+        jsxOwners.set(nodeIndex(attributes), owner);
+        names.propertyReads.push({ node: node.name, owner, property: node.name.text });
       }
       if ((isIdentifier(node) || isPrivateIdentifier(node)) && wanted(node.text)) {
         collectName(node, names);
@@ -180,6 +210,8 @@ function collectName(node: Node, names: NamesToResolve): void {
   const parent = node.parent;
   if (isShorthandPropertyAssignment(parent) && sameNode(parent.name, node)) {
     names.shorthands.push(node);
+  } else if (isJsxAttribute(parent) && sameNode(parent.name, node)) {
+    return;
   } else if (isBindingElement(parent) && isObjectBindingPattern(parent.parent) && isBindingElementName(parent, node)) {
     return;
   } else if (!isDeclarationName(node)) {
@@ -196,7 +228,7 @@ function isBindingElementName(element: BindingElement, node: Node): boolean {
 
 function collectDestructuring(
   element: BindingElement,
-  pattern: ObjectBindingPattern,
+  owner: PropertyOwner,
   wanted: (name: string) => boolean,
   names: NamesToResolve,
 ): void {
@@ -206,7 +238,7 @@ function collectDestructuring(
   }
   const property = propertyNameText(name);
   if (wanted(property)) {
-    names.destructurings.push({ node: name, pattern, property });
+    names.propertyReads.push({ node: name, owner, property });
   }
 }
 

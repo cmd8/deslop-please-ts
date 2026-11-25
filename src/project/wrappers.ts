@@ -115,11 +115,16 @@ function forwardingOf(
     return isIdentifier(callee) ? { target, fieldsCalledOn: [] } : undefined;
   }
   const receiver = withoutParentheses(callee.expression);
-  if (isIdentifier(receiver) && parameters.has(receiver.text)) {
+  if (isIdentifier(receiver) && (parameters.has(receiver.text) || namesTypeOrModule(catalog, declaration, receiver, resolvedAt))) {
     return { target, fieldsCalledOn: [] };
   }
   const fields = takesThis ? fieldPathOfThis(catalog, declaration, receiver, resolvedAt) : undefined;
   return fields === undefined ? undefined : { target, fieldsCalledOn: fields };
+}
+
+function namesTypeOrModule(catalog: Catalog, declaration: PlacedDeclaration, receiver: Node, resolvedAt: ResolvedAt): boolean {
+  const named = resolvedAt(declaration, receiver);
+  return named === undefined || catalog.items[named]?.kind === "type";
 }
 
 function onlyCall(body: Node): CallExpression | undefined {
