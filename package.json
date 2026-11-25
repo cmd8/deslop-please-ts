@@ -1,0 +1,33 @@
+{
+  "name": "deslop-please-ts",
+  "version": "0.1.0",
+  "description": "An opinionated linter to remove sloppy TypeScript code: deep modules, narrow interfaces.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "deslop-please-ts": "dist/main.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=22.18"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "check": "tsc --noEmit",
+    "test": "node --test \"src/**/*.test.ts\" \"tests/*.test.ts\"",
+    "self": "node src/main.ts",
+    "prepare": "npm run build"
+  },
+  "dependencies": {
+    "typescript": "7.1.0-beta",
+    "yaml": "^2.8.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0"
+  }
+}
