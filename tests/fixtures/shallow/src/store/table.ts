@@ -1,6 +1,11 @@
 export class Table {
-  readonly #keys: number[] = [];
-  readonly #values: number[] = [];
+  readonly #keys: number[];
+  readonly #values: number[];
+
+  constructor() {
+    this.#keys = [];
+    this.#values = [];
+  }
 
   count(): number {
     return this.#keys.length;
