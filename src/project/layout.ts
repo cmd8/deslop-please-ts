@@ -3,33 +3,41 @@ import { Tree, type CodeFile, type NodeId } from "../model/index.ts";
 import type { AnalyzedSource } from "./programs.ts";
 import { innermostPackage, type Workspace, type WorkspacePackage } from "./workspace.ts";
 
+export interface PlacedSource {
+  readonly source: AnalyzedSource;
+  readonly file: CodeFile;
+}
+
 export interface Layout {
   readonly tree: Tree;
-  readonly files: readonly CodeFile[];
+  readonly placed: readonly PlacedSource[];
 }
 
 const INDEX_FILE = /^index\.(ts|tsx|mts|cts)$/;
-const TEST_FILE = /\.(test|spec)\.(ts|tsx|mts|cts)$/;
+const TEST_FILE = /\.(test|spec|stories)\.(ts|tsx|mts|cts)$/;
 const SOURCE_EXTENSION = /\.(ts|tsx|mts|cts)$/;
 const TEST_DIRECTORIES = new Set(["test", "tests", "__tests__", "__mocks__"]);
 
-export function layOut(workspace: Workspace, sources: readonly AnalyzedSource[]): Layout {
+export interface CountedSource {
+  readonly source: AnalyzedSource;
+  readonly lines: number;
+}
+
+export function layOut(workspace: Workspace, sources: readonly CountedSource[]): Layout {
   const tree = new Tree();
   const packageNodes = packageNodesOf(workspace, tree);
-  const files = sources.map((source): CodeFile => {
+  const placed = sources.map(({ source, lines }): PlacedSource => {
     const packageNode = packageNodes.get(source.package);
     if (packageNode === undefined) {
       throw new RangeError(`no node for the package at ${source.package.directory}`);
     }
     const placement = placeInPackage(tree, packageNode, source);
     return {
-      path: source.path,
-      module: placement.module,
-      test: placement.test,
-      lines: lineCount(source.sourceFile.text),
+      source,
+      file: { path: source.path, module: placement.module, test: placement.test, lines },
     };
   });
-  return { tree, files };
+  return { tree, placed };
 }
 
 export function lineCount(text: string): number {
@@ -86,5 +94,5 @@ function placeInPackage(
 }
 
 function joinedPath(source: AnalyzedSource): string {
-  return source.sourceFile.fileName.split("/").join(sep);
+  return source.fileName.split("/").join(sep);
 }

@@ -23,18 +23,7 @@ import {
   SyntaxKind,
   type Node,
   type ParameterDeclaration,
-  type SourceFile,
 } from "typescript/ast";
-
-export type DeclarationKey = string;
-
-export function declarationKey(path: string, index: number): DeclarationKey {
-  return `${path}#${index}`;
-}
-
-export function keyOfNode(sourceFile: SourceFile, node: Node): DeclarationKey {
-  return declarationKey(sourceFile.path, nodeIndex(node));
-}
 
 export function nodeIndex(node: Node): number {
   const index: unknown = Reflect.get(node, "index");

@@ -9,6 +9,7 @@ import {
   isJsxAttributes,
   isNamedImports,
   isNamespaceImport,
+  isNewExpression,
   isObjectBindingPattern,
   isPrivateIdentifier,
   isPropertyAccessExpression,
@@ -23,8 +24,7 @@ import {
 import { SymbolFlags, type API, type Checker, type Symbol as CompilerSymbol, type Type } from "typescript/sync";
 import type { ItemId } from "../model/index.ts";
 import type { Catalog } from "./catalog.ts";
-import type { AnalyzedSource } from "./programs.ts";
-import { declarationKey, nodeIndex, propertyNameText, withoutParentheses } from "./syntax.ts";
+import { nodeIndex, propertyNameText, withoutParentheses } from "./syntax.ts";
 
 export type NameRole = "named" | "destructured";
 
@@ -81,16 +81,15 @@ const DECLARATION_KINDS = new Set<SyntaxKind>([
 export class NameResolver {
   readonly #api: API;
   readonly #catalog: Catalog;
-  readonly #aliasTargets = new Map<Checker, Map<number, CompilerSymbol>>();
+  readonly #aliasTargets = new WeakMap<Checker, Map<number, ItemId | undefined>>();
 
   constructor(api: API, catalog: Catalog) {
     this.#api = api;
     this.#catalog = catalog;
   }
 
-  resolve(source: AnalyzedSource): ResolvedName[] {
-    const names = this.#namesToResolve(source.sourceFile);
-    const checker = source.checker;
+  resolve(checker: Checker, tree: SourceFile): ResolvedName[] {
+    const names = this.#namesToResolve(tree);
     const named = names.named.length === 0 ? [] : checker.getSymbolAtLocation(names.named);
     const shorthandValues = this.#api.batch(
       ...names.shorthands.map((node) => checker.getShorthandAssignmentValueSymbol.gen(node.parent)),
@@ -107,8 +106,13 @@ export class NameResolver {
     const resolved: ResolvedName[] = [];
     const add = (node: Node, symbol: CompilerSymbol | undefined, role: NameRole) => {
       const item = symbol === undefined ? undefined : this.#itemOf(checker, symbol);
-      if (item !== undefined) {
-        resolved.push({ node, item, role });
+      if (item === undefined) {
+        return;
+      }
+      resolved.push({ node, item, role });
+      const constructor = isConstructed(node) ? this.#catalog.constructorOf.get(item) : undefined;
+      if (constructor !== undefined) {
+        resolved.push({ node, item: constructor, role });
       }
     };
     names.named.forEach((node, index) => add(node, named[index], "named"));
@@ -142,9 +146,7 @@ export class NameResolver {
   }
 
   #itemOf(checker: Checker, symbol: CompilerSymbol): ItemId | undefined {
-    const target = (symbol.flags & SymbolFlags.Alias) !== 0 ? this.#aliasTargetsOf(checker).get(symbol.id) : symbol;
-    const first = target?.declarations[0];
-    return first === undefined ? undefined : this.#catalog.itemAt.get(declarationKey(first.path, first.index));
+    return (symbol.flags & SymbolFlags.Alias) !== 0 ? this.#aliasTargetsOf(checker).get(symbol.id) : this.#itemDeclaring(symbol);
   }
 
   #followAliases(checker: Checker, symbols: readonly (CompilerSymbol | undefined)[]): void {
@@ -159,13 +161,16 @@ export class NameResolver {
     const targets = this.#api.batch(...aliases.map((alias) => checker.getAliasedSymbol.gen(alias)));
     aliases.forEach((alias, index) => {
       const target = targets[index];
-      if (target !== undefined) {
-        known.set(alias.id, target);
-      }
+      known.set(alias.id, target === undefined ? undefined : this.#itemDeclaring(target));
     });
   }
 
-  #aliasTargetsOf(checker: Checker): Map<number, CompilerSymbol> {
+  #itemDeclaring(symbol: CompilerSymbol): ItemId | undefined {
+    const first = symbol.declarations[0];
+    return first === undefined ? undefined : this.#catalog.itemAt(first.path, first.index);
+  }
+
+  #aliasTargetsOf(checker: Checker): Map<number, ItemId | undefined> {
     let known = this.#aliasTargets.get(checker);
     if (known === undefined) {
       known = new Map();
@@ -204,6 +209,13 @@ export class NameResolver {
     visit(sourceFile);
     return names;
   }
+}
+
+function isConstructed(node: Node): boolean {
+  const parent = node.parent;
+  const callee = isPropertyAccessExpression(parent) && sameNode(parent.name, node) ? parent : node;
+  const call = callee.parent;
+  return isNewExpression(call) && sameNode(call.expression, callee);
 }
 
 function collectName(node: Node, names: NamesToResolve): void {

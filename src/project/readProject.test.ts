@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, describe, test } from "node:test";
 import { ToolError } from "../error.ts";
+import { idFromIndex } from "../id.ts";
 import type { ItemId, Model, Wrapper } from "../model/index.ts";
 import { readProject } from "./index.ts";
 
@@ -52,7 +54,7 @@ function nameOf(model: Model, id: ItemId | undefined): string | undefined {
 function idOf(model: Model, name: string): ItemId {
   const index = model.items.findIndex((item) => item.name === name);
   assert.notEqual(index, -1, `an item named ${name}`);
-  return index as ItemId;
+  return idFromIndex(index);
 }
 
 function itemNamed(model: Model, name: string) {
@@ -240,6 +242,35 @@ describe("the workspace", () => {
   });
 });
 
+describe("files that git ignores", () => {
+  const files = {
+    ".gitignore": "src/generated/\n",
+    "src/generated/schema.ts": "export class Schema { version = 1; }\n",
+    "src/use.ts": 'import { Schema } from "./generated/schema.ts";\nexport const schema = new Schema().version;\n',
+  };
+
+  test("inside a git work tree, a file that git ignores is outside the model, and so are the names that resolve into it", () => {
+    const root = sampleWith(files);
+    const init = spawnSync("git", ["init", "--quiet"], { cwd: root });
+    assert.equal(init.status, 0);
+    const model = readProject(root);
+    assert.deepEqual(
+      model.files.map((file) => file.path),
+      ["src/use.ts"],
+    );
+    assert.deepEqual(model.items.map((item) => item.name), ["schema"]);
+    assert.deepEqual(model.references, []);
+  });
+
+  test("outside a git work tree, nothing is left out", () => {
+    const model = readSample(files);
+    assert.deepEqual(
+      model.files.map((file) => file.path),
+      ["src/generated/schema.ts", "src/use.ts"],
+    );
+  });
+});
+
 describe("the tree and the files", () => {
   test("directories and files are modules, an index file is its directory's own code, and a file beside a directory of its name is the same module", () => {
     const model = readSample({
@@ -265,6 +296,7 @@ describe("the tree and the files", () => {
       "src/run.ts": "export const run = 1;\n",
       "src/run.test.ts": "export const a = 1;\n",
       "src/run.spec.tsx": "export const b = 1;\n",
+      "src/run.stories.tsx": "export const h = 1;\n",
       "src/__tests__/case.ts": "export const c = 1;\n",
       "src/__mocks__/fake.ts": "export const d = 1;\n",
       "src/test/helper.ts": "export const e = 1;\n",
@@ -277,6 +309,7 @@ describe("the tree and the files", () => {
         ["src/__mocks__/fake.ts", true],
         ["src/__tests__/case.ts", true],
         ["src/run.spec.tsx", true],
+        ["src/run.stories.tsx", true],
         ["src/run.test.ts", true],
         ["src/run.ts", false],
         ["src/test/helper.ts", true],
@@ -292,6 +325,7 @@ describe("the tree and the files", () => {
         "sample/src/__tests__ (test)",
         "sample/src/__tests__/case (test)",
         "sample/src/run.spec (test)",
+        "sample/src/run.stories (test)",
         "sample/src/run.test (test)",
         "sample/src/test (test)",
         "sample/src/test/helper (test)",
@@ -552,6 +586,27 @@ describe("the references", () => {
         .filter((reference) => nameOf(model, reference.holder) === "run")
         .map((reference) => nameOf(model, reference.item)),
       ["fresh", "RunQueue", "RunQueue", "RunQueue"],
+    );
+  });
+
+  test("creating an instance names the class and, when it has one, its constructor", () => {
+    const model = readSample({
+      "src/ring.ts": [
+        "export class Sized { constructor(readonly limit: number) {} }",
+        "export class Plain {}",
+      ].join("\n"),
+      "src/app.ts": [
+        'import * as ring from "./ring.ts";',
+        "export function make(): unknown[] {",
+        "  return [new ring.Sized(3), new ring.Plain()];",
+        "}",
+      ].join("\n"),
+    });
+    assert.deepEqual(
+      model.references
+        .filter((reference) => nameOf(model, reference.holder) === "make")
+        .map((reference) => nameOf(model, reference.item)),
+      ["Sized", "Sized.constructor", "Plain"],
     );
   });
 
