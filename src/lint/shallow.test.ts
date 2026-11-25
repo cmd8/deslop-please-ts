@@ -1,8 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildGraph } from "../graph/index.ts";
-import { idFromIndex } from "../id.ts";
-import type { ItemId } from "../model/index.ts";
+import type { Item } from "../model/index.ts";
 import { Sample } from "../model/sample.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { shallowModules } from "./shallow.ts";
@@ -14,7 +13,7 @@ function store(shown: number, hidden: number): Sample {
   sample.module("store/table");
   const type = sample.item(storeModule, "Store", "type");
   const run = sample.item(app, "run", "function");
-  const helpers: ItemId[] = [];
+  const helpers: Item[] = [];
   for (let i = 0; i < hidden; i += 1) {
     helpers.push(sample.member(type, storeModule, `Store.helper${i}`, "function"));
   }
@@ -135,12 +134,12 @@ test("lists that share a free function never make a module shallow that shows se
 
 test("wrappers count for nothing and a method counts at its type's home", () => {
   const sample = store(8, 8);
-  const type = idFromIndex<ItemId>(0);
+  const type = sample.named("Store");
   const storeModule = sample.module("store");
   const app = sample.module("app");
   for (let i = 0; i < 8; i += 1) {
     const forwarder = sample.member(type, storeModule, `Store.pad${i}`, "function");
-    sample.wrappers.set(forwarder, { kind: "forwarder", target: idFromIndex<ItemId>(3), fieldsCalledOn: [] });
+    sample.wrappers.set(forwarder, { kind: "forwarder", target: sample.named("Store.helper1"), fieldsCalledOn: [] });
   }
   const moved = sample.member(type, app, "Store.moved", "function");
   sample.refer(sample.named("run"), moved);

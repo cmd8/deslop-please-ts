@@ -1,5 +1,5 @@
 import { isCallExpression, isPropertyAccessExpression, type Node, type SourceFile } from "typescript/ast";
-import type { CodeFile, FileId, ItemId, Reference, Wrapper } from "../model/index.ts";
+import type { CodeFile, Item, Reference, Wrapper } from "../model/index.ts";
 import { accessUseOf, onlyReadsValue, type AccessUse } from "./access.ts";
 import type { Catalog } from "./catalog.ts";
 import type { NameRole, ResolvedName } from "./resolution.ts";
@@ -7,7 +7,6 @@ import { nodeIndex } from "./syntax.ts";
 import { widestShape } from "./valueShape.ts";
 
 export interface FileContext {
-  readonly id: FileId;
   readonly file: CodeFile;
   readonly tree: SourceFile;
 }
@@ -20,10 +19,10 @@ export interface PendingReference {
 }
 
 export function referencesIn(context: FileContext, names: readonly ResolvedName[], catalog: Catalog): PendingReference[] {
-  const holderAt = new Map<number, ItemId | undefined>();
-  const holderOf = (node: Node): ItemId | undefined => {
+  const holderAt = new Map<number, Item | undefined>();
+  const holderOf = (node: Node): Item | undefined => {
     const visited: number[] = [];
-    let found: ItemId | undefined;
+    let found: Item | undefined;
     for (let at: Node | undefined = node.parent; at !== undefined; at = at.parent) {
       const index = nodeIndex(at);
       if (holderAt.has(index)) {
@@ -47,7 +46,7 @@ export function referencesIn(context: FileContext, names: readonly ResolvedName[
     const call = access === undefined ? undefined : callOf(access);
     return {
       reference: {
-        file: context.id,
+        file: context.file,
         line: tree.getLineAndCharacterOfPosition(name.node.getStart(tree)).line + 1,
         from: context.file.module,
         holder: holderOf(name.node),
@@ -64,12 +63,12 @@ export function referencesIn(context: FileContext, names: readonly ResolvedName[
 export function finishedReference(
   pending: PendingReference,
   catalog: Catalog,
-  wrappers: ReadonlyMap<ItemId, Wrapper>,
+  wrappers: ReadonlyMap<Item, Wrapper>,
 ): Reference {
   return { ...pending.reference, onlyReadsValue: readsOnlyValue(pending, catalog, wrappers) };
 }
 
-function readsOnlyValue(pending: PendingReference, catalog: Catalog, wrappers: ReadonlyMap<ItemId, Wrapper>): boolean {
+function readsOnlyValue(pending: PendingReference, catalog: Catalog, wrappers: ReadonlyMap<Item, Wrapper>): boolean {
   if (pending.role === "destructured") {
     return true;
   }
@@ -77,7 +76,7 @@ function readsOnlyValue(pending: PendingReference, catalog: Catalog, wrappers: R
   if (pending.accessUse === undefined) {
     return false;
   }
-  if (catalog.items[item]?.kind === "field") {
+  if (item.kind === "field") {
     return onlyReadsValue(pending.accessUse, catalog.fieldShapes.get(item) ?? "structured");
   }
   const wrapper = wrappers.get(item);
@@ -104,6 +103,6 @@ function callOf(access: Node): Node | undefined {
   return isCallExpression(parent) && nodeIndex(parent.expression) === nodeIndex(access) ? parent : undefined;
 }
 
-function isPropertyLike(catalog: Catalog, item: ItemId): boolean {
-  return (catalog.declarationsOf[item] ?? []).some((declaration) => declaration.form === "accessor");
+function isPropertyLike(catalog: Catalog, item: Item): boolean {
+  return (catalog.declarationsOf.get(item) ?? []).some((declaration) => declaration.form === "accessor");
 }

@@ -1,45 +1,42 @@
-import { referenceOf, thingAt } from "../graph/index.ts";
-import type { Graph, ThingId, Use } from "../graph/index.ts";
-import { fileOf, itemOf } from "../model/index.ts";
-import { idFromIndex } from "../id.ts";
-import type { ItemId, Model, NodeId } from "../model/index.ts";
+import type { Graph, Thing, Use } from "../graph/index.ts";
+import type { Item, Model, TreeNode } from "../model/index.ts";
 import { HELD_IN_MIND, compareLocations, compareText } from "./diagnostic.ts";
 import type { Diagnostic, Location, PlacesInModule } from "./diagnostic.ts";
 import { clickable, counted, inScope, listed, withoutGenerics } from "./reporting.ts";
 
-type OutsideUses = ReadonlyMap<ItemId, readonly Use[]>;
+type OutsideUses = ReadonlyMap<Item, readonly Use[]>;
 
-export function fieldLeaks(model: Model, graph: Graph, scope: NodeId | undefined): Diagnostic[] {
-  const fieldsOfThing = new Map<ThingId, ItemId[]>();
-  model.items.forEach((item, index) => {
-    const ofType = item.parent !== undefined && itemOf(model, item.parent).kind === "type";
-    const thing = graph.thingOf[index];
+export function fieldLeaks(model: Model, graph: Graph, scope: TreeNode | undefined): Diagnostic[] {
+  const fieldsOfThing = new Map<Thing, Item[]>();
+  for (const item of model.items) {
+    const ofType = item.parent?.kind === "type";
+    const thing = graph.thingOf.get(item);
     if (item.kind === "field" && ofType && thing !== undefined) {
       const fields = fieldsOfThing.get(thing) ?? [];
       fieldsOfThing.set(thing, fields);
-      fields.push(idFromIndex<ItemId>(index));
+      fields.push(item);
     }
-  });
-  const outside = new Map<ItemId, Use[]>();
-  const working = new Set<ThingId>();
+  }
+  const outside = new Map<Item, Use[]>();
+  const working = new Set<Thing>();
   for (const usage of graph.uses) {
-    const owner = itemOf(model, usage.item).kind === "field" ? graph.thingOf[usage.item] : undefined;
+    const owner = usage.item.kind === "field" ? graph.thingOf.get(usage.item) : undefined;
     if (owner === undefined) {
       continue;
     }
-    const tangle = graph.tangleOf[owner];
+    const tangle = graph.tangleOf.get(owner);
     const user = usage.user;
-    const insider = user !== undefined && (user === owner || (tangle !== undefined && graph.tangleOf[user] === tangle));
+    const insider = user !== undefined && (user === owner || (tangle !== undefined && graph.tangleOf.get(user) === tangle));
     if (!insider) {
       const uses = outside.get(usage.item) ?? [];
       outside.set(usage.item, uses);
       uses.push(usage);
-    } else if (user === owner && worksOnFields(model, usage)) {
+    } else if (user === owner && worksOnFields(usage)) {
       working.add(owner);
     }
   }
   const diagnostics: Diagnostic[] = [];
-  for (const [thing, fields] of [...fieldsOfThing].sort(([a], [b]) => a - b)) {
+  for (const [thing, fields] of [...fieldsOfThing].sort(([a], [b]) => graph.thingOrder(a, b))) {
     const kept = fields.some((field) => !outside.has(field));
     if (!kept || !working.has(thing)) {
       continue;
@@ -49,36 +46,30 @@ export function fieldLeaks(model: Model, graph: Graph, scope: NodeId | undefined
       if (uses.length === 0) {
         continue;
       }
-      const home = thingAt(graph, thing).home;
       const concerned =
-        inScope(model.tree, scope, home) ||
-        uses.some((usage) => inScope(model.tree, scope, referenceOf(model, usage).from));
+        inScope(model.tree, scope, thing.home) || uses.some((usage) => inScope(model.tree, scope, usage.reference.from));
       if (concerned) {
-        diagnostics.push(diagnostic(model, graph, thing, field, uses, others(model, field, fields, outside)));
+        diagnostics.push(diagnostic(model, thing, field, uses, others(field, fields, outside)));
       }
     }
   }
   return diagnostics;
 }
 
-function worksOnFields(model: Model, usage: Use): boolean {
-  const holder = referenceOf(model, usage).holder;
-  if (holder === undefined) {
-    return false;
-  }
-  const item = itemOf(model, holder);
-  return item.kind === "function" && item.takesThis;
+function worksOnFields(usage: Use): boolean {
+  const holder = usage.reference.holder;
+  return holder !== undefined && holder.kind === "function" && holder.takesThis;
 }
 
-function others(model: Model, field: ItemId, fields: readonly ItemId[], outside: OutsideUses): string[] {
+function others(field: Item, fields: readonly Item[], outside: OutsideUses): string[] {
   const known: string[] = [];
   const kept: string[] = [];
   for (const other of fields.filter((other) => other !== field)) {
     const uses = outside.get(other);
     if (uses === undefined) {
-      kept.push(bareName(model, other));
+      kept.push(bareName(other));
     } else if (uses.some((usage) => !usage.onlyReadsValue)) {
-      known.push(bareName(model, other));
+      known.push(bareName(other));
     }
   }
   const lines: string[] = [];
@@ -91,8 +82,8 @@ function others(model: Model, field: ItemId, fields: readonly ItemId[], outside:
   return lines;
 }
 
-function bareName(model: Model, field: ItemId): string {
-  const name = itemOf(model, field).name;
+function bareName(field: Item): string {
+  const name = field.name;
   return name.slice(name.lastIndexOf(".") + 1);
 }
 
@@ -103,23 +94,22 @@ interface Site {
 
 function diagnostic(
   model: Model,
-  graph: Graph,
-  thing: ThingId,
-  field: ItemId,
+  owner: Thing,
+  field: Item,
   uses: readonly Use[],
   others: readonly string[],
 ): Diagnostic {
   const tree = model.tree;
   const sites = new Map<string, Site>();
-  const places = new Map<NodeId, Set<string>>();
+  const places = new Map<TreeNode, Set<string>>();
   for (const usage of uses) {
-    const reference = referenceOf(model, usage);
-    const holder = reference.holder === undefined ? undefined : itemOf(model, reference.holder);
+    const reference = usage.reference;
+    const holder = reference.holder;
     const user =
       holder === undefined ? tree.display(reference.from) : `${tree.display(holder.owner)}:${withoutGenerics(holder.name)}`;
     const through =
-      usage.through === undefined ? "" : `, through \`${withoutGenerics(itemOf(model, usage.through).name)}\``;
-    const at: Location = { file: fileOf(model, reference.file).path, line: reference.line };
+      usage.through === undefined ? "" : `, through \`${withoutGenerics(usage.through.name)}\``;
+    const at: Location = { file: reference.file.path, line: reference.line };
     const key = clickable(at);
     const inModule = places.get(reference.from) ?? new Set<string>();
     places.set(reference.from, inModule);
@@ -128,9 +118,8 @@ function diagnostic(
       sites.set(key, { at, user: `\`${user}\`${through}` });
     }
   }
-  const owner = thingAt(graph, thing);
-  const typeName = withoutGenerics(itemOf(model, owner.item).name);
-  const fieldName = itemOf(model, field).name;
+  const typeName = withoutGenerics(owner.item.name);
+  const fieldName = field.name;
   const sorted = [...sites.values()].sort((a, b) => compareLocations(a.at, b.at));
   const notes = sorted.slice(0, HELD_IN_MIND).map(({ at, user }) => `${clickable(at)}: ${user}`);
   if (sorted.length > HELD_IN_MIND) {
@@ -152,6 +141,6 @@ function diagnostic(
     message: `\`${fieldName}\` is known outside \`${typeName}\`: ${counted(sorted.length, "place")} in ${counted(moduleCount, "module")}`,
     location: sorted[0]?.at,
     notes,
-    picture: { kind: "spread", owner: `${home}:${typeName}`, field: bareName(model, field), modules, others },
+    picture: { kind: "spread", owner: `${home}:${typeName}`, field: bareName(field), modules, others },
   };
 }

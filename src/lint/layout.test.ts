@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { NodeId } from "../model/index.ts";
+import type { TreeNode } from "../model/index.ts";
 import { Sample } from "../model/sample.ts";
 import { holders, layout } from "./layout.ts";
 
@@ -14,7 +14,7 @@ function packageP(): Sample {
   return sample;
 }
 
-function keys(sample: Sample, scope: NodeId | undefined): string[] {
+function keys(sample: Sample, scope: TreeNode | undefined): string[] {
   return layout(sample.model, scope).map((diagnostic) => `${diagnostic.lint} ${diagnostic.key}`);
 }
 

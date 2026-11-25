@@ -1,132 +1,118 @@
-import { idFromIndex } from "../id.ts";
-import { fileOf, itemOf } from "../model/index.ts";
-import type { ItemId, Model, NodeId, Reference } from "../model/index.ts";
+import { inModelOrder } from "../model/index.ts";
+import type { Item, Model, Reference, TreeNode } from "../model/index.ts";
 import { circles } from "./components.ts";
 
 export { circles } from "./components.ts";
 
-declare const thingIdBrand: unique symbol;
-export type ThingId = number & { readonly [thingIdBrand]: true };
-
-declare const tangleIdBrand: unique symbol;
-export type TangleId = number & { readonly [tangleIdBrand]: true };
-
 export interface Thing {
-  readonly item: ItemId;
-  readonly home: NodeId;
+  readonly item: Item;
+  readonly home: TreeNode;
 }
 
+export type Tangle = readonly Thing[];
+
 export interface Use {
-  readonly reference: number;
-  readonly user: ThingId | undefined;
-  readonly item: ItemId;
-  readonly through: ItemId | undefined;
+  readonly reference: Reference;
+  readonly user: Thing | undefined;
+  readonly item: Item;
+  readonly through: Item | undefined;
   readonly onlyReadsValue: boolean;
 }
 
 export interface Graph {
   readonly things: readonly Thing[];
-  readonly thingOf: readonly (ThingId | undefined)[];
+  readonly thingOf: ReadonlyMap<Item, Thing>;
   readonly uses: readonly Use[];
-  readonly tangles: readonly (readonly ThingId[])[];
-  readonly tangleOf: readonly (TangleId | undefined)[];
+  readonly tangles: readonly Tangle[];
+  readonly tangleOf: ReadonlyMap<Thing, Tangle>;
+  readonly itemOrder: (a: Item, b: Item) => number;
+  readonly thingOrder: (a: Thing, b: Thing) => number;
 }
 
 export function buildGraph(model: Model): Graph {
   const { things, thingOf } = thingsOf(model);
   const uses = usesThroughWrappers(model, thingOf);
-  const knows: number[][] = things.map(() => []);
+  const knows = new Map<Thing, Thing[]>();
   for (const usage of uses) {
-    const used = thingOf[usage.item];
+    const used = thingOf.get(usage.item);
     if (usage.user !== undefined && used !== undefined && usage.user !== used) {
-      knows[usage.user]?.push(used);
+      const known = knows.get(usage.user) ?? [];
+      knows.set(usage.user, known);
+      known.push(used);
     }
   }
-  const tangles = circles(knows).map((members) => members.map((member) => idFromIndex<ThingId>(member)));
-  const tangleOf = new Array<TangleId | undefined>(things.length).fill(undefined);
-  tangles.forEach((members, index) => {
-    for (const member of members) {
-      tangleOf[member] = idFromIndex<TangleId>(index);
+  const tangles = circles(things, knows);
+  const tangleOf = new Map<Thing, Tangle>();
+  for (const tangle of tangles) {
+    for (const member of tangle) {
+      tangleOf.set(member, tangle);
     }
-  });
-  return { things, thingOf, uses, tangles, tangleOf };
-}
-
-export function thingAt(graph: Graph, id: ThingId): Thing {
-  const thing = graph.things[id];
-  if (thing === undefined) {
-    throw new RangeError(`no thing ${id} in the graph`);
   }
-  return thing;
-}
-
-export function referenceOf(model: Model, usage: Use): Reference {
-  const reference = model.references[usage.reference];
-  if (reference === undefined) {
-    throw new RangeError(`no reference ${usage.reference} in the model`);
-  }
-  return reference;
-}
-
-function thingsOf(model: Model): { things: Thing[]; thingOf: (ThingId | undefined)[] } {
-  const counted = (id: ItemId): boolean => {
-    const item = itemOf(model, id);
-    return !model.tree.isTest(item.owner) && (item.file === undefined || !fileOf(model, item.file).test);
+  return {
+    things,
+    thingOf,
+    uses,
+    tangles,
+    tangleOf,
+    itemOrder: inModelOrder(model.items),
+    thingOrder: inModelOrder(things),
   };
+}
+
+function thingsOf(model: Model): { things: Thing[]; thingOf: Map<Item, Thing> } {
+  const counted = (item: Item): boolean => !model.tree.isTest(item.owner) && !(item.file?.test ?? false);
   const things: Thing[] = [];
-  const ofRoot = new Map<ItemId, ThingId>();
-  const thingOf = new Array<ThingId | undefined>(model.items.length).fill(undefined);
-  for (let index = 0; index < model.items.length; index += 1) {
-    const id = idFromIndex<ItemId>(index);
-    let root = id;
-    for (let parent = itemOf(model, root).parent; parent !== undefined; parent = itemOf(model, root).parent) {
+  const ofRoot = new Map<Item, Thing>();
+  const thingOf = new Map<Item, Thing>();
+  for (const item of model.items) {
+    let root = item;
+    for (let parent = root.parent; parent !== undefined; parent = root.parent) {
       root = parent;
     }
-    const item = itemOf(model, root);
-    const isThing = item.kind === "type" || item.kind === "function" || item.kind === "constant";
-    if (!isThing || !counted(id) || !counted(root)) {
+    const isThing = root.kind === "type" || root.kind === "function" || root.kind === "constant";
+    if (!isThing || !counted(item) || !counted(root)) {
       continue;
     }
     let thing = ofRoot.get(root);
     if (thing === undefined) {
-      things.push({ item: root, home: item.owner });
-      thing = idFromIndex<ThingId>(things.length - 1);
+      thing = { item: root, home: root.owner };
+      things.push(thing);
       ofRoot.set(root, thing);
     }
-    thingOf[index] = thing;
+    thingOf.set(item, thing);
   }
   return { things, thingOf };
 }
 
-function usesThroughWrappers(model: Model, thingOf: readonly (ThingId | undefined)[]): Use[] {
-  const isWrapper = (id: ItemId): boolean => model.wrappers.has(id);
+function usesThroughWrappers(model: Model, thingOf: ReadonlyMap<Item, Thing>): Use[] {
+  const isWrapper = (item: Item): boolean => model.wrappers.has(item);
   const uses: Use[] = [];
-  model.references.forEach((reference, index) => {
+  for (const reference of model.references) {
     if (reference.test || (reference.holder !== undefined && isWrapper(reference.holder))) {
-      return;
+      continue;
     }
-    const user = reference.holder === undefined ? undefined : thingOf[reference.holder];
+    const user = reference.holder === undefined ? undefined : thingOf.get(reference.holder);
     const through = isWrapper(reference.item) ? reference.item : undefined;
     for (const { item, onlyReadsValue } of behind(model, reference)) {
-      if (thingOf[item] !== undefined) {
-        uses.push({ reference: index, user, item, through, onlyReadsValue });
+      if (thingOf.has(item)) {
+        uses.push({ reference, user, item, through, onlyReadsValue });
       }
     }
-  });
+  }
   return uses;
 }
 
 interface UsedItem {
-  readonly item: ItemId;
+  readonly item: Item;
   readonly onlyReadsValue: boolean;
 }
 
-function behind(model: Model, reference: Reference, at: ItemId = reference.item): UsedItem[] {
+function behind(model: Model, reference: Reference, at: Item = reference.item): UsedItem[] {
   const wrapper = model.wrappers.get(at);
   if (wrapper === undefined) {
     return [{ item: at, onlyReadsValue: at === reference.item && reference.onlyReadsValue }];
   }
-  const onlyRead = (field: ItemId): UsedItem => ({ item: field, onlyReadsValue: true });
+  const onlyRead = (field: Item): UsedItem => ({ item: field, onlyReadsValue: true });
   switch (wrapper.kind) {
     case "forwarder":
       return [...wrapper.fieldsCalledOn.map(onlyRead), ...behind(model, reference, wrapper.target)];

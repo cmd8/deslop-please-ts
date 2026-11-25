@@ -22,7 +22,7 @@ import {
   type SourceFile,
 } from "typescript/ast";
 import { SymbolFlags, type API, type Checker, type Symbol as CompilerSymbol, type Type } from "typescript/sync";
-import type { ItemId } from "../model/index.ts";
+import type { Item } from "../model/index.ts";
 import type { Catalog } from "./catalog.ts";
 import { nodeIndex, propertyNameText, withoutParentheses } from "./syntax.ts";
 
@@ -30,7 +30,7 @@ export type NameRole = "named" | "destructured";
 
 export interface ResolvedName {
   readonly node: Node;
-  readonly item: ItemId;
+  readonly item: Item;
   readonly role: NameRole;
 }
 
@@ -81,7 +81,7 @@ const DECLARATION_KINDS = new Set<SyntaxKind>([
 export class NameResolver {
   readonly #api: API;
   readonly #catalog: Catalog;
-  readonly #aliasTargets = new WeakMap<Checker, Map<number, ItemId | undefined>>();
+  readonly #aliasTargets = new WeakMap<Checker, Map<number, Item | undefined>>();
 
   constructor(api: API, catalog: Catalog) {
     this.#api = api;
@@ -145,7 +145,7 @@ export class NameResolver {
     return types;
   }
 
-  #itemOf(checker: Checker, symbol: CompilerSymbol): ItemId | undefined {
+  #itemOf(checker: Checker, symbol: CompilerSymbol): Item | undefined {
     return (symbol.flags & SymbolFlags.Alias) !== 0 ? this.#aliasTargetsOf(checker).get(symbol.id) : this.#itemDeclaring(symbol);
   }
 
@@ -165,12 +165,12 @@ export class NameResolver {
     });
   }
 
-  #itemDeclaring(symbol: CompilerSymbol): ItemId | undefined {
+  #itemDeclaring(symbol: CompilerSymbol): Item | undefined {
     const first = symbol.declarations[0];
     return first === undefined ? undefined : this.#catalog.itemAt(first.path, first.index);
   }
 
-  #aliasTargetsOf(checker: Checker): Map<number, ItemId | undefined> {
+  #aliasTargetsOf(checker: Checker): Map<number, Item | undefined> {
     let known = this.#aliasTargets.get(checker);
     if (known === undefined) {
       known = new Map();

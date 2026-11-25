@@ -1,79 +1,71 @@
-const UNSEEN = -1;
+import { inModelOrder } from "../model/index.ts";
 
-export function circles(edges: readonly (readonly number[])[]): number[][] {
-  const count = edges.length;
-  const index = new Array<number>(count).fill(UNSEEN);
-  const low = new Array<number>(count).fill(0);
-  const onStack = new Array<boolean>(count).fill(false);
-  const stack: number[] = [];
-  let next = 0;
-  const found: number[][] = [];
-  const visit = (node: number): void => {
-    index[node] = next;
-    low[node] = next;
-    next += 1;
-    stack.push(node);
-    onStack[node] = true;
+interface Visit {
+  readonly index: number;
+  low: number;
+  onStack: boolean;
+}
+
+export function circles<Node>(nodes: readonly Node[], edges: ReadonlyMap<Node, readonly Node[]>): Node[][] {
+  const order = inModelOrder(nodes);
+  const visits = new Map<Node, Visit>();
+  const stack: { readonly node: Node; readonly seen: Visit }[] = [];
+  const found: Node[][] = [];
+  const visit = (node: Node): Visit => {
+    const seen: Visit = { index: visits.size, low: visits.size, onStack: true };
+    visits.set(node, seen);
+    stack.push({ node, seen });
+    return seen;
   };
-  for (let start = 0; start < count; start += 1) {
-    if (index[start] !== UNSEEN) {
+  for (const start of nodes) {
+    if (visits.has(start)) {
       continue;
     }
-    const work: { node: number; edge: number }[] = [{ node: start, edge: 0 }];
-    visit(start);
+    const work: { node: Node; seen: Visit; edge: number }[] = [{ node: start, seen: visit(start), edge: 0 }];
     for (let top = work.at(-1); top !== undefined; top = work.at(-1)) {
-      const { node } = top;
-      const to = edges[node]?.[top.edge];
+      const to = edges.get(top.node)?.[top.edge];
       if (to !== undefined) {
         top.edge += 1;
-        if (index[to] === UNSEEN) {
-          visit(to);
-          work.push({ node: to, edge: 0 });
-        } else if (onStack[to] === true) {
-          low[node] = Math.min(at(low, node), at(index, to));
+        const known = visits.get(to);
+        if (known === undefined) {
+          work.push({ node: to, seen: visit(to), edge: 0 });
+        } else if (known.onStack) {
+          top.seen.low = Math.min(top.seen.low, known.index);
         }
         continue;
       }
       work.pop();
       const parent = work.at(-1);
       if (parent !== undefined) {
-        low[parent.node] = Math.min(at(low, parent.node), at(low, node));
+        parent.seen.low = Math.min(parent.seen.low, top.seen.low);
       }
-      if (at(low, node) === at(index, node)) {
-        const component: number[] = [];
+      if (top.seen.low === top.seen.index) {
+        const component: Node[] = [];
         for (let member = stack.pop(); member !== undefined; member = stack.pop()) {
-          onStack[member] = false;
-          component.push(member);
-          if (member === node) {
+          member.seen.onStack = false;
+          component.push(member.node);
+          if (member.node === top.node) {
             break;
           }
         }
         if (component.length > 1) {
-          component.sort((a, b) => a - b);
-          found.push(component);
+          found.push(component.sort(order));
         }
       }
     }
   }
-  return found.sort(compareNumberLists);
+  return found.sort((a, b) => compareLists(a, b, order));
 }
 
-function at(values: readonly number[], position: number): number {
-  const value = values[position];
-  if (value === undefined) {
-    throw new RangeError(`no node ${position}`);
-  }
-  return value;
-}
-
-function compareNumberLists(a: readonly number[], b: readonly number[]): number {
-  for (const [position, node] of a.entries()) {
-    const other = b[position];
+function compareLists<Node>(a: readonly Node[], b: readonly Node[], order: (a: Node, b: Node) => number): number {
+  for (const [at, node] of a.entries()) {
+    const other = b[at];
     if (other === undefined) {
       return 1;
     }
-    if (node !== other) {
-      return node - other;
+    const compared = order(node, other);
+    if (compared !== 0) {
+      return compared;
     }
   }
   return a.length - b.length;

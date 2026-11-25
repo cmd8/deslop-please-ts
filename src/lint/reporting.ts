@@ -1,26 +1,26 @@
-import { thingAt } from "../graph/index.ts";
-import type { Graph, ThingId } from "../graph/index.ts";
-import { fileOf, itemOf } from "../model/index.ts";
-import type { ItemId, Model, NodeId, Reference, Tree } from "../model/index.ts";
+import type { Thing } from "../graph/index.ts";
+import type { Item, Model, Reference, Tree, TreeNode } from "../model/index.ts";
 import { HELD_IN_MIND, compareLocations, compareText } from "./diagnostic.ts";
 import type { Location, Picture, Step } from "./diagnostic.ts";
 
-export const TYPESCRIPT_EXTENSIONS = [".ts", ".tsx", ".mts", ".cts"] as const;
+export type ItemOrder = (a: Item, b: Item) => number;
+
+export const TYPESCRIPT_EXTENSIONS: readonly string[] = [".ts", ".tsx", ".mts", ".cts"];
 
 export const INDEX_FILE_NAMES = TYPESCRIPT_EXTENSIONS.map((extension) => `index${extension}`);
 
 export class Tie {
-  readonly #items = new Set<ItemId>();
-  readonly #holders = new Set<ItemId>();
+  readonly #items = new Set<Item>();
+  readonly #holders = new Set<Item>();
   #firstSite: Location | undefined;
-  readonly #firstSiteInModule = new Map<NodeId, Location>();
+  readonly #firstSiteInModule = new Map<TreeNode, Location>();
 
-  add(model: Model, item: ItemId, reference: Reference, module: NodeId): void {
+  add(item: Item, reference: Reference, module: TreeNode): void {
     this.#items.add(item);
     if (reference.holder !== undefined) {
       this.#holders.add(reference.holder);
     }
-    const site: Location = { file: fileOf(model, reference.file).path, line: reference.line };
+    const site: Location = { file: reference.file.path, line: reference.line };
     const first = this.#firstSiteInModule.get(module);
     if (first === undefined || compareLocations(site, first) < 0) {
       this.#firstSiteInModule.set(module, site);
@@ -41,19 +41,19 @@ export class Tie {
     return this.#firstSite;
   }
 
-  note(model: Model, verb: string, user: string, used: string): string {
+  note(order: ItemOrder, verb: string, user: string, used: string): string {
     const site = this.site;
     const elsewhere = uniqueLocations([...this.#firstSiteInModule.values()])
       .filter((first) => compareLocations(first, site) !== 0)
       .map(clickable);
     const also = elsewhere.length === 0 ? "" : `; also at ${listed(elsewhere)}`;
     const items = counted(this.#items.size, "item");
-    return `${clickable(site)}: \`${user}\` ${verb} \`${used}\` by ${items}: ${listed(names(model, this.#items))}${also}`;
+    return `${clickable(site)}: \`${user}\` ${verb} \`${used}\` by ${items}: ${listed(names(order, this.#items))}${also}`;
   }
 
-  step(model: Model, member: string): Step {
-    const items = grouped(names(model, this.#items));
-    const holders = names(model, this.#holders);
+  step(order: ItemOrder, member: string): Step {
+    const items = grouped(names(order, this.#items));
+    const holders = names(order, this.#holders);
     const uses = holders.length === 1 ? `${holders[0]} uses ${items}` : `uses ${items}`;
     return { member, site: this.site, uses };
   }
@@ -72,7 +72,7 @@ export interface CircleReport {
 }
 
 export function circleReport(
-  model: Model,
+  order: ItemOrder,
   verb: string,
   noun: string,
   members: number,
@@ -81,12 +81,12 @@ export function circleReport(
   const ties = [...unsorted].sort(
     (a, b) => a.tie.cost - b.tie.cost || compareText(a.user, b.user) || compareText(a.used, b.used),
   );
-  const notes = ties.slice(0, HELD_IN_MIND).map(({ user, used, tie }) => tie.note(model, verb, user, used));
+  const notes = ties.slice(0, HELD_IN_MIND).map(({ user, used, tie }) => tie.note(order, verb, user, used));
   if (ties.length > HELD_IN_MIND) {
     notes.push(`and ${counted(ties.length - HELD_IN_MIND, "more tie")}`);
   }
   const circle = shortestCircle(ties).map((at) => tiedAt(ties, at));
-  const steps = circle.map(({ user, tie }) => tie.step(model, user));
+  const steps = circle.map(({ user, tie }) => tie.step(order, user));
   const leftOut = [
     { count: members - circle.length, noun: `more ${noun}` },
     { count: ties.length - circle.length, noun: "more tie" },
@@ -161,8 +161,8 @@ function writtenMembers(head: string, members: readonly string[]): string | unde
   return members.length === 1 ? `${head}.${only}` : `${head}.{${listed(members)}}`;
 }
 
-function names(model: Model, items: ReadonlySet<ItemId>): string[] {
-  return [...items].sort((a, b) => a - b).map((item) => withoutGenerics(itemOf(model, item).name));
+function names(order: ItemOrder, items: ReadonlySet<Item>): string[] {
+  return [...items].sort(order).map((item) => withoutGenerics(item.name));
 }
 
 function uniqueLocations(locations: readonly Location[]): Location[] {
@@ -173,13 +173,12 @@ export function clickable(location: Location): string {
   return `${location.file}:${location.line}:1`;
 }
 
-export function inScope(tree: Tree, scope: NodeId | undefined, node: NodeId): boolean {
+export function inScope(tree: Tree, scope: TreeNode | undefined, node: TreeNode): boolean {
   return scope === undefined || tree.isWithin(node, scope);
 }
 
-export function fullName(model: Model, graph: Graph, id: ThingId): string {
-  const thing = thingAt(graph, id);
-  return `${model.tree.display(thing.home)}:${withoutGenerics(itemOf(model, thing.item).name)}`;
+export function fullName(tree: Tree, thing: Thing): string {
+  return `${tree.display(thing.home)}:${withoutGenerics(thing.item.name)}`;
 }
 
 export function listed(names: readonly string[]): string {
@@ -209,7 +208,7 @@ export function withoutGenerics(name: string): string {
   return out;
 }
 
-export function moduleLocation(model: Model, module: NodeId): Location | undefined {
+export function moduleLocation(model: Model, module: TreeNode): Location | undefined {
   const rank = (path: string): number => (INDEX_FILE_NAMES.some((name) => path === name || path.endsWith(`/${name}`)) ? 0 : 1);
   const [primary] = model.files
     .filter((file) => !file.test && file.module === module)

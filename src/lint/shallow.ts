@@ -1,35 +1,26 @@
-import { referenceOf, thingAt } from "../graph/index.ts";
-import type { Graph, ThingId } from "../graph/index.ts";
-import { idFromIndex } from "../id.ts";
-import { itemOf } from "../model/index.ts";
-import type { ItemId, ItemKind, Model, NodeId, Tree } from "../model/index.ts";
+import type { Graph, Thing } from "../graph/index.ts";
+import type { Item, Model, Tree, TreeNode } from "../model/index.ts";
 import { HELD_IN_MIND, compareText, compareTextLists } from "./diagnostic.ts";
 import type { Diagnostic, LongList } from "./diagnostic.ts";
 import { counted, inScope, listed, moduleLocation, withoutGenerics } from "./reporting.ts";
 
 const HIDDEN_PER_SHOWN_AT_BREAK_EVEN = 1;
 
-type TypesKnown = ReadonlyMap<ThingId, ReadonlySet<ThingId>>;
+type TypesKnown = ReadonlyMap<Thing, ReadonlySet<Thing>>;
 
 interface ThingList {
   readonly thing: string;
   readonly functions: readonly string[];
 }
 
-export function shallowModules(model: Model, graph: Graph, scope: NodeId | undefined): Diagnostic[] {
+export function shallowModules(model: Model, graph: Graph, scope: TreeNode | undefined): Diagnostic[] {
   const tree = model.tree;
   const judged = judgedModules(tree);
-  const home = (item: ItemId): NodeId | undefined => {
-    const thing = graph.thingOf[item];
-    return thing === undefined ? undefined : thingAt(graph, thing).home;
-  };
-  const working = (item: ItemId): boolean => {
-    const function_ = itemOf(model, item);
-    return function_.kind === "function" && !function_.implementsInheritedMember && !model.wrappers.has(item);
-  };
-  const total = new Map<NodeId, number>();
-  for (let index = 0; index < model.items.length; index += 1) {
-    const item = idFromIndex<ItemId>(index);
+  const home = (item: Item): TreeNode | undefined => graph.thingOf.get(item)?.home;
+  const working = (item: Item): boolean =>
+    item.kind === "function" && !item.implementsInheritedMember && !model.wrappers.has(item);
+  const total = new Map<TreeNode, number>();
+  for (const item of model.items) {
     const at = working(item) ? home(item) : undefined;
     if (at === undefined) {
       continue;
@@ -38,25 +29,25 @@ export function shallowModules(model: Model, graph: Graph, scope: NodeId | undef
       total.set(module, (total.get(module) ?? 0) + 1);
     }
   }
-  const shown = new Map<NodeId, Set<ItemId>>();
+  const shown = new Map<TreeNode, Set<Item>>();
   for (const usage of graph.uses) {
     const at = working(usage.item) ? home(usage.item) : undefined;
     if (at === undefined) {
       continue;
     }
-    const user = usage.user === undefined ? referenceOf(model, usage).from : thingAt(graph, usage.user).home;
+    const user = usage.user === undefined ? usage.reference.from : usage.user.home;
     for (const module of modulesAround(tree, at)) {
       if (within(tree, user, module)) {
         break;
       }
       if (judged.has(module)) {
-        const functions = shown.get(module) ?? new Set<ItemId>();
+        const functions = shown.get(module) ?? new Set<Item>();
         shown.set(module, functions);
         functions.add(usage.item);
       }
     }
   }
-  const known = typesKnown(model, graph);
+  const known = typesKnown(graph);
   const diagnostics: Diagnostic[] = [];
   for (const module of judged) {
     const functions = shown.get(module);
@@ -85,13 +76,12 @@ export function shallowModules(model: Model, graph: Graph, scope: NodeId | undef
   return diagnostics;
 }
 
-function typesKnown(model: Model, graph: Graph): TypesKnown {
-  const kind = (thing: ThingId): ItemKind => itemOf(model, thingAt(graph, thing).item).kind;
-  const known = new Map<ThingId, Set<ThingId>>();
+function typesKnown(graph: Graph): TypesKnown {
+  const known = new Map<Thing, Set<Thing>>();
   for (const usage of graph.uses) {
-    const used = graph.thingOf[usage.item];
-    if (usage.user !== undefined && used !== undefined && kind(usage.user) === "function" && kind(used) === "type") {
-      const types = known.get(usage.user) ?? new Set<ThingId>();
+    const used = graph.thingOf.get(usage.item);
+    if (usage.user !== undefined && used !== undefined && usage.user.item.kind === "function" && used.item.kind === "type") {
+      const types = known.get(usage.user) ?? new Set<Thing>();
       known.set(usage.user, types);
       types.add(used);
     }
@@ -103,18 +93,18 @@ function lists(
   model: Model,
   graph: Graph,
   known: TypesKnown,
-  module: NodeId,
-  shown: ReadonlySet<ItemId>,
+  module: TreeNode,
+  shown: ReadonlySet<Item>,
 ): ThingList[] {
-  const name = (item: ItemId): string => withoutGenerics(itemOf(model, item).name);
-  const ofModule = (type: ThingId): boolean => within(model.tree, thingAt(graph, type).home, module);
-  const byThing = new Map<ThingId, string[]>();
+  const name = (item: Item): string => withoutGenerics(item.name);
+  const ofModule = (type: Thing): boolean => within(model.tree, type.home, module);
+  const byThing = new Map<Thing, string[]>();
   for (const function_ of shown) {
-    const thing = graph.thingOf[function_];
+    const thing = graph.thingOf.get(function_);
     if (thing === undefined) {
       continue;
     }
-    const types = thingAt(graph, thing).item === function_ ? [...(known.get(thing) ?? [])].filter(ofModule) : [];
+    const types = thing.item === function_ ? [...(known.get(thing) ?? [])].filter(ofModule) : [];
     for (const list of types.length > 0 ? types : [thing]) {
       const functions = byThing.get(list) ?? [];
       byThing.set(list, functions);
@@ -122,8 +112,8 @@ function lists(
     }
   }
   return [...byThing]
-    .sort(([a], [b]) => a - b)
-    .map(([thing, functions]) => ({ thing: name(thingAt(graph, thing).item), functions: functions.sort(compareText) }))
+    .sort(([a], [b]) => graph.thingOrder(a, b))
+    .map(([thing, functions]) => ({ thing: name(thing.item), functions: functions.sort(compareText) }))
     .sort((a, b) => compareText(a.thing, b.thing) || compareTextLists(a.functions, b.functions))
     .sort((a, b) => b.functions.length - a.functions.length);
 }
@@ -145,25 +135,25 @@ function tooLong(lists: readonly ThingList[]): { notes: string[]; long: LongList
   return { notes, long };
 }
 
-function judgedModules(tree: Tree): Set<NodeId> {
+function judgedModules(tree: Tree): Set<TreeNode> {
   const nodes = tree.eachAfterItsParent();
-  const parents = new Set<NodeId>();
-  for (const id of nodes) {
-    const parent = tree.parent(id);
-    if (parent !== undefined && !tree.isTest(id)) {
+  const parents = new Set<TreeNode>();
+  for (const node of nodes) {
+    const parent = tree.parent(node);
+    if (parent !== undefined && !tree.isTest(node)) {
       parents.add(parent);
     }
   }
   return new Set(
-    nodes.filter((id) => {
-      if (tree.isTest(id)) {
+    nodes.filter((node) => {
+      if (tree.isTest(node)) {
         return false;
       }
-      switch (tree.node(id).kind) {
+      switch (node.kind) {
         case "package":
           return true;
         case "module":
-          return parents.has(id);
+          return parents.has(node);
         case "workspace":
           return false;
       }
@@ -171,11 +161,11 @@ function judgedModules(tree: Tree): Set<NodeId> {
   );
 }
 
-function modulesAround(tree: Tree, node: NodeId): NodeId[] {
+function modulesAround(tree: Tree, node: TreeNode): TreeNode[] {
   const package_ = tree.packageOf(node);
-  const around: NodeId[] = [];
+  const around: TreeNode[] = [];
   for (const at of tree.selfThenAncestors(node)) {
-    if (tree.packageOf(at) !== package_ || tree.node(at).kind === "workspace") {
+    if (tree.packageOf(at) !== package_ || at.kind === "workspace") {
       break;
     }
     around.push(at);
@@ -183,6 +173,6 @@ function modulesAround(tree: Tree, node: NodeId): NodeId[] {
   return around;
 }
 
-function within(tree: Tree, node: NodeId, module: NodeId): boolean {
+function within(tree: Tree, node: TreeNode, module: TreeNode): boolean {
   return tree.isWithin(node, module) && tree.packageOf(node) === tree.packageOf(module);
 }

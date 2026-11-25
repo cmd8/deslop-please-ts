@@ -1,7 +1,6 @@
 import type { SourceFile } from "typescript/ast";
 import type { Checker } from "typescript/sync";
-import { idFromIndex } from "../id.ts";
-import type { CodeFile, FileId, ItemId, Model } from "../model/index.ts";
+import type { CodeFile, Item, Model } from "../model/index.ts";
 import { catalogItems, recordSource, type Catalog, type DeclarationRecord } from "./catalog.ts";
 import { declarationsOf } from "./declarations.ts";
 import { layOut, lineCount } from "./layout.ts";
@@ -35,13 +34,10 @@ export function readProject(workingDirectory: string): Model {
     }));
     const { tree, placed } = layOut(workspace, recorded);
     const files = placed.map((each) => each.file);
-    const catalog = catalogItems(
-      recorded.map((each) => each.record),
-      files,
-    );
+    const catalog = catalogItems(placed);
     const resolver = new NameResolver(session.api, catalog);
-    const read = eachTree(session, placed, ({ file }, sourceTree, checker, index) =>
-      readFile(catalog, resolver, checker, sourceTree, { id: idFromIndex(index), file }),
+    const read = eachTree(session, placed, ({ file }, sourceTree, checker) =>
+      readFile(catalog, resolver, checker, sourceTree, file),
     );
     const wrappers = assembleWrappers(catalog, new Map(read.flatMap((each) => each.wrappings)));
     const references = read.flatMap((each) =>
@@ -58,7 +54,7 @@ function readFile(
   resolver: NameResolver,
   checker: Checker,
   tree: SourceFile,
-  placed: { readonly id: FileId; readonly file: CodeFile },
+  file: CodeFile,
 ): ReadFile {
   const names = resolver.resolve(checker, tree);
   const named = namedItems(names);
@@ -71,13 +67,13 @@ function readFile(
     return record === undefined || wrapping === undefined ? [] : [[record, wrapping]];
   });
   return {
-    references: referencesIn({ id: placed.id, file: placed.file, tree }, names, catalog),
+    references: referencesIn({ file, tree }, names, catalog),
     wrappings,
   };
 }
 
-function namedItems(names: readonly ResolvedName[]): Map<number, ItemId> {
-  const items = new Map<number, ItemId>();
+function namedItems(names: readonly ResolvedName[]): Map<number, Item> {
+  const items = new Map<number, Item>();
   for (const name of names) {
     const index = nodeIndex(name.node);
     if (name.role === "named" && !items.has(index)) {

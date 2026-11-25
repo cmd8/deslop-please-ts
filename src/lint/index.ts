@@ -1,5 +1,5 @@
 import { buildGraph } from "../graph/index.ts";
-import type { Model, NodeId } from "../model/index.ts";
+import type { Model, TreeNode } from "../model/index.ts";
 import { moduleCycles } from "./cycles.ts";
 import { compareLints, compareText } from "./diagnostic.ts";
 import type { Diagnostic } from "./diagnostic.ts";
@@ -11,7 +11,7 @@ import { tangles } from "./tangles.ts";
 export { HELD_IN_MIND, LINTS, compareLints, compareText, parseLint } from "./diagnostic.ts";
 export type { Diagnostic, Lint, Location, LongList, Picture, PlacesInModule, Step } from "./diagnostic.ts";
 
-export function check(model: Model, scope: NodeId | undefined): Diagnostic[] {
+export function check(model: Model, scope: TreeNode | undefined): Diagnostic[] {
   const graph = buildGraph(model);
   return [
     ...moduleCycles(model, scope),
@@ -22,7 +22,7 @@ export function check(model: Model, scope: NodeId | undefined): Diagnostic[] {
   ].sort((a, b) => compareLints(a.lint, b.lint) || compareText(a.key, b.key));
 }
 
-export function resolveNode(model: Model, query: string): NodeId | undefined {
+export function resolveNode(model: Model, query: string): TreeNode | undefined {
   const tree = model.tree;
-  return tree.eachAfterItsParent().find((id) => tree.node(id).kind !== "workspace" && tree.display(id) === query);
+  return tree.eachAfterItsParent().find((node) => node.kind !== "workspace" && tree.display(node) === query);
 }

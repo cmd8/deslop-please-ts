@@ -5,8 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { after, describe, test } from "node:test";
 import { ToolError } from "../error.ts";
-import { idFromIndex } from "../id.ts";
-import type { ItemId, Model, Wrapper } from "../model/index.ts";
+import type { Item, Model } from "../model/index.ts";
 import { readProject } from "./index.ts";
 
 const COMPILER_OPTIONS = {
@@ -47,22 +46,21 @@ function readSample(files: Record<string, string>): Model {
   return readProject(sampleWith(files));
 }
 
-function nameOf(model: Model, id: ItemId | undefined): string | undefined {
-  return id === undefined ? undefined : model.items[id]?.name;
+function nameOf(item: Item | undefined): string | undefined {
+  return item?.name;
 }
 
-function idOf(model: Model, name: string): ItemId {
-  const index = model.items.findIndex((item) => item.name === name);
-  assert.notEqual(index, -1, `an item named ${name}`);
-  return idFromIndex(index);
+function itemCalled(model: Model, name: string): Item {
+  const item = model.items.find((each) => each.name === name);
+  assert.ok(item !== undefined, `an item named ${name}`);
+  return item;
 }
 
 function itemNamed(model: Model, name: string) {
-  const item = model.items[idOf(model, name)];
-  assert.ok(item !== undefined);
+  const item = itemCalled(model, name);
   return {
     kind: item.kind,
-    parent: nameOf(model, item.parent),
+    parent: nameOf(item.parent),
     owner: model.tree.display(item.owner),
     takesThis: item.takesThis,
     implementsInheritedMember: item.implementsInheritedMember,
@@ -70,11 +68,11 @@ function itemNamed(model: Model, name: string) {
 }
 
 function referencesTo(model: Model, name: string) {
-  const item = idOf(model, name);
+  const item = itemCalled(model, name);
   return model.references
     .filter((reference) => reference.item === item)
     .map((reference) => ({
-      holder: nameOf(model, reference.holder),
+      holder: nameOf(reference.holder),
       line: reference.line,
       onlyReadsValue: reference.onlyReadsValue,
     }));
@@ -84,22 +82,23 @@ function readsOf(model: Model, name: string): boolean[] {
   return referencesTo(model, name).map((reference) => reference.onlyReadsValue);
 }
 
-function wrapperOf(model: Model, name: string): Record<string, unknown> | undefined {
-  const wrapper: Wrapper | undefined = model.wrappers.get(idOf(model, name));
+type WrapperByName =
+  | { readonly kind: "forwarder"; readonly target: string; readonly fieldsCalledOn: readonly string[] }
+  | { readonly kind: "accessor"; readonly lent: readonly string[]; readonly copied: readonly string[]; readonly lendsOnlyToRead: boolean };
+
+function wrapperOf(model: Model, name: string): WrapperByName | undefined {
+  const wrapper = model.wrappers.get(itemCalled(model, name));
   if (wrapper === undefined) {
     return undefined;
   }
+  const names = (items: readonly Item[]) => items.map((item) => item.name);
   if (wrapper.kind === "forwarder") {
-    return {
-      kind: wrapper.kind,
-      target: nameOf(model, wrapper.target),
-      fieldsCalledOn: wrapper.fieldsCalledOn.map((id) => nameOf(model, id)),
-    };
+    return { kind: wrapper.kind, target: wrapper.target.name, fieldsCalledOn: names(wrapper.fieldsCalledOn) };
   }
   return {
     kind: wrapper.kind,
-    lent: wrapper.lent.map((id) => nameOf(model, id)),
-    copied: wrapper.copied.map((id) => nameOf(model, id)),
+    lent: names(wrapper.lent),
+    copied: names(wrapper.copied),
     lendsOnlyToRead: wrapper.lendsOnlyToRead,
   };
 }
@@ -107,7 +106,7 @@ function wrapperOf(model: Model, name: string): Record<string, unknown> | undefi
 function modules(model: Model): string[] {
   return model.tree
     .eachAfterItsParent()
-    .map((id) => `${model.tree.display(id)}${model.tree.node(id).test ? " (test)" : ""}`);
+    .map((node) => `${model.tree.display(node)}${node.test ? " (test)" : ""}`);
 }
 
 describe("the workspace", () => {
@@ -162,7 +161,7 @@ describe("the workspace", () => {
     assert.ok(core !== undefined);
     const corePackage = model.tree.packageOf(core);
     assert.ok(corePackage !== undefined);
-    assert.equal(model.tree.node(model.tree.parent(corePackage) ?? model.tree.root).name, "monorepo");
+    assert.equal(corePackage.parent?.name, "monorepo");
   });
 
   test("pnpm workspace members are packages under the workspace when the root has no package.json", () => {
@@ -179,8 +178,8 @@ describe("the workspace", () => {
     );
     const packages = model.tree
       .eachAfterItsParent()
-      .filter((id) => model.tree.node(id).kind === "package")
-      .map((id) => [model.tree.node(id).name, model.tree.parent(id)]);
+      .filter((node) => node.kind === "package")
+      .map((node) => [node.name, node.parent]);
     assert.deepEqual(packages, [
       ["web", model.tree.root],
       ["shared", model.tree.root],
@@ -203,9 +202,9 @@ describe("the workspace", () => {
       ["tools/inner/src/b.ts", "inner/src/b"],
     ]);
     assert.ok(modules(model).includes("inner"));
-    const inner = model.tree.eachAfterItsParent().find((id) => model.tree.node(id).name === "inner");
+    const inner = model.tree.eachAfterItsParent().find((node) => node.name === "inner");
     assert.ok(inner !== undefined);
-    assert.equal(model.tree.node(model.tree.parent(inner) ?? model.tree.root).name, "outer");
+    assert.equal(inner.parent?.name, "outer");
   });
 
   test("the projects a tsconfig.json references are read too", () => {
@@ -545,10 +544,10 @@ describe("the references", () => {
     });
     const from = (path: string) =>
       model.references
-        .filter((reference) => model.files[reference.file]?.path === path)
+        .filter((reference) => reference.file.path === path)
         .map((reference) => [
-          nameOf(model, reference.holder),
-          nameOf(model, reference.item),
+          nameOf(reference.holder),
+          nameOf(reference.item),
           reference.line,
           model.tree.display(reference.from),
           reference.test,
@@ -583,8 +582,8 @@ describe("the references", () => {
     });
     assert.deepEqual(
       model.references
-        .filter((reference) => nameOf(model, reference.holder) === "run")
-        .map((reference) => nameOf(model, reference.item)),
+        .filter((reference) => nameOf(reference.holder) === "run")
+        .map((reference) => nameOf(reference.item)),
       ["fresh", "RunQueue", "RunQueue", "RunQueue"],
     );
   });
@@ -604,8 +603,8 @@ describe("the references", () => {
     });
     assert.deepEqual(
       model.references
-        .filter((reference) => nameOf(model, reference.holder) === "make")
-        .map((reference) => nameOf(model, reference.item)),
+        .filter((reference) => nameOf(reference.holder) === "make")
+        .map((reference) => nameOf(reference.item)),
       ["Sized", "Sized.constructor", "Plain"],
     );
   });

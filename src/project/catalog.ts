@@ -7,8 +7,7 @@ import {
   type SourceFile,
 } from "typescript/ast";
 import type { API, Checker, Symbol as CompilerSymbol } from "typescript/sync";
-import { idFromIndex } from "../id.ts";
-import type { CodeFile, FileId, Item, ItemId, ItemKind } from "../model/index.ts";
+import type { CodeFile, Item, ItemKind } from "../model/index.ts";
 import { declarationsOf, type Declaration } from "./declarations.ts";
 import { inheritedMemberNames } from "./inheritance.ts";
 import { functionPartsOf, nodeIndex } from "./syntax.ts";
@@ -43,15 +42,15 @@ export interface SourceRecord {
 
 interface Placed {
   readonly declaration: DeclarationRecord;
-  readonly item: ItemId;
+  readonly item: Item;
 }
 
 export class Catalog {
   readonly items: readonly Item[];
-  readonly declarationsOf: readonly (readonly DeclarationRecord[])[];
+  readonly declarationsOf: ReadonlyMap<Item, readonly DeclarationRecord[]>;
   readonly memberNames: ReadonlySet<string>;
-  readonly fieldShapes: ReadonlyMap<ItemId, ValueShape>;
-  readonly constructorOf: ReadonlyMap<ItemId, ItemId>;
+  readonly fieldShapes: ReadonlyMap<Item, ValueShape>;
+  readonly constructorOf: ReadonlyMap<Item, Item>;
   readonly #placed: ReadonlyMap<string, ReadonlyMap<number, Placed>>;
 
   constructor(
@@ -66,7 +65,7 @@ export class Catalog {
     this.#placed = placed;
   }
 
-  itemAt(path: string, index: number): ItemId | undefined {
+  itemAt(path: string, index: number): Item | undefined {
     return this.#placed.get(path)?.get(index)?.item;
   }
 
@@ -77,10 +76,10 @@ export class Catalog {
 
 interface CatalogParts {
   readonly items: readonly Item[];
-  readonly declarationsOf: readonly (readonly DeclarationRecord[])[];
+  readonly declarationsOf: ReadonlyMap<Item, readonly DeclarationRecord[]>;
   readonly memberNames: ReadonlySet<string>;
-  readonly fieldShapes: ReadonlyMap<ItemId, ValueShape>;
-  readonly constructorOf: ReadonlyMap<ItemId, ItemId>;
+  readonly fieldShapes: ReadonlyMap<Item, ValueShape>;
+  readonly constructorOf: ReadonlyMap<Item, Item>;
 }
 
 const CONSTRUCTOR = "constructor";
@@ -126,78 +125,84 @@ export function recordSource(api: API, checker: Checker, shapes: ShapeReader, tr
   return { path: tree.path, declarations: [...records.values()] };
 }
 
-export function catalogItems(sources: readonly SourceRecord[], files: readonly CodeFile[]): Catalog {
-  const placed = new Map<string, Map<number, Placed>>();
-  const declarationsOfItem: DeclarationRecord[][] = [];
-  const canonical: { readonly declaration: DeclarationRecord; readonly file: FileId }[] = [];
-  const declaredAt = new Map(sources.map((source) => [source.path, new Set(source.declarations.map((each) => each.index))]));
-  const isKnown = (at: NodeAt) => declaredAt.get(at.path)?.has(at.index) ?? false;
-  sources.forEach((source, index) => {
-    const inFile = new Map<number, Placed>();
-    placed.set(source.path, inFile);
-    for (const declaration of source.declarations) {
-      const first = declaration.firstElsewhere;
-      if (first === undefined || !isKnown(first)) {
-        const item = idFromIndex<ItemId>(declarationsOfItem.length);
-        inFile.set(declaration.index, { declaration, item });
-        declarationsOfItem.push([]);
-        canonical.push({ declaration, file: idFromIndex(index) });
-      }
-    }
-  });
-  for (const source of sources) {
-    const inFile = placed.get(source.path);
-    for (const declaration of source.declarations) {
-      const first = declaration.firstElsewhere;
-      const item =
-        first === undefined || !isKnown(first)
-          ? inFile?.get(declaration.index)?.item
-          : placed.get(first.path)?.get(first.index)?.item;
-      if (item !== undefined) {
-        inFile?.set(declaration.index, { declaration, item });
-        declarationsOfItem[item]?.push(declaration);
-      }
-    }
-  }
-  const itemOfRecord = new Map<DeclarationRecord, ItemId>();
-  for (const inFile of placed.values()) {
-    for (const each of inFile.values()) {
-      itemOfRecord.set(each.declaration, each.item);
-    }
-  }
+export interface FiledRecord {
+  readonly record: SourceRecord;
+  readonly file: CodeFile;
+}
 
-  const items = canonical.map(({ declaration, file }): Item => {
-    const codeFile = files[file];
-    if (codeFile === undefined) {
-      throw new RangeError(`no file ${file} in the layout`);
+interface FiledDeclaration {
+  readonly declaration: DeclarationRecord;
+  readonly file: CodeFile;
+}
+
+export function catalogItems(sources: readonly FiledRecord[]): Catalog {
+  const byPath = new Map(
+    sources.map(({ record, file }) => [
+      record.path,
+      new Map(record.declarations.map((declaration) => [declaration.index, { declaration, file }])),
+    ]),
+  );
+  const canonicalOf = (filed: FiledDeclaration): FiledDeclaration => {
+    const first = filed.declaration.firstElsewhere;
+    return (first === undefined ? undefined : byPath.get(first.path)?.get(first.index)) ?? filed;
+  };
+  const itemOfCanonical = new Map<DeclarationRecord, Item>();
+  const itemFor = ({ declaration, file }: FiledDeclaration): Item => {
+    const known = itemOfCanonical.get(declaration);
+    if (known !== undefined) {
+      return known;
     }
-    return {
+    const parent = declaration.parent === undefined ? undefined : canonicalOf({ declaration: declaration.parent, file });
+    const item: Item = {
       name: declaration.name,
-      owner: codeFile.module,
+      owner: file.module,
       file,
       kind: declaration.kind,
-      parent: declaration.parent === undefined ? undefined : itemOfRecord.get(declaration.parent),
+      parent: parent === undefined ? undefined : itemFor(parent),
       implementsInheritedMember: declaration.implementsInheritedMember,
       takesThis: declaration.takesThis,
     };
-  });
-  const fieldShapes = new Map<ItemId, ValueShape>();
-  const constructorOf = new Map<ItemId, ItemId>();
-  declarationsOfItem.forEach((declarations, index) => {
-    const id = idFromIndex<ItemId>(index);
+    itemOfCanonical.set(declaration, item);
+    return item;
+  };
+  const canonical = sources.flatMap(({ record, file }) =>
+    record.declarations.flatMap((declaration) => {
+      const filed = { declaration, file };
+      return canonicalOf(filed).declaration === declaration ? [filed] : [];
+    }),
+  );
+  const items = canonical.map(itemFor);
+
+  const placed = new Map<string, Map<number, Placed>>();
+  const declarationsOf = new Map<Item, DeclarationRecord[]>();
+  for (const { record, file } of sources) {
+    const inFile = new Map<number, Placed>();
+    placed.set(record.path, inFile);
+    for (const declaration of record.declarations) {
+      const item = itemOfCanonical.get(canonicalOf({ declaration, file }).declaration);
+      if (item !== undefined) {
+        inFile.set(declaration.index, { declaration, item });
+        const declarations = declarationsOf.get(item) ?? [];
+        declarationsOf.set(item, declarations);
+        declarations.push(declaration);
+      }
+    }
+  }
+  const fieldShapes = new Map<Item, ValueShape>();
+  const constructorOf = new Map<Item, Item>();
+  for (const [item, declarations] of declarationsOf) {
     const shape = declarations.find((declaration) => declaration.shape !== undefined)?.shape;
     if (shape !== undefined) {
-      fieldShapes.set(id, shape);
+      fieldShapes.set(item, shape);
     }
-    const item = items[id];
-    if (item?.kind === "function" && item.parent !== undefined && declarations[0]?.memberName === CONSTRUCTOR) {
-      constructorOf.set(item.parent, id);
+    if (item.kind === "function" && item.parent !== undefined && declarations[0]?.memberName === CONSTRUCTOR) {
+      constructorOf.set(item.parent, item);
     }
-  });
+  }
   return new Catalog(
     {
       items,
-      declarationsOf: declarationsOfItem,
+      declarationsOf,
       memberNames: new Set(canonical.map(({ declaration }) => declaration.memberName)),
       fieldShapes,
       constructorOf,

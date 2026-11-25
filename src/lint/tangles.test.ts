@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildGraph } from "../graph/index.ts";
-import type { ItemId } from "../model/index.ts";
+import type { Item } from "../model/index.ts";
 import { Sample } from "../model/sample.ts";
 import { HELD_IN_MIND } from "./diagnostic.ts";
 import type { Diagnostic } from "./diagnostic.ts";
@@ -32,7 +32,7 @@ test("a circle in one module is reported only when it is too big to hold in mind
   const sample = new Sample();
   const module = sample.module("ring");
   const ring = (size: number): void => {
-    const things: ItemId[] = [];
+    const things: Item[] = [];
     for (let i = 0; i < size; i += 1) {
       things.push(sample.item(module, `T${size}x${i}`, "type"));
     }

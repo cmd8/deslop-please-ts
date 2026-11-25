@@ -1,16 +1,17 @@
-import { idFromIndex } from "../id.ts";
 import { Tree } from "./tree.ts";
-import type { NodeId } from "./tree.ts";
-import type { CodeFile, FileId, Item, ItemId, ItemKind, Model, Reference, Wrapper } from "./index.ts";
+import type { TreeNode } from "./tree.ts";
+import type { CodeFile, Item, ItemKind, Model, Reference, Wrapper } from "./index.ts";
 
 export const SAMPLE_PACKAGE = "p";
+
+type SampleItem = { -readonly [Key in keyof Item]: Item[Key] };
 
 export class Sample {
   readonly tree = new Tree();
   readonly files: CodeFile[] = [];
-  readonly items: Item[] = [];
+  readonly items: SampleItem[] = [];
   readonly references: Reference[] = [];
-  readonly wrappers = new Map<ItemId, Wrapper>();
+  readonly wrappers = new Map<Item, Wrapper>();
 
   constructor() {
     this.package();
@@ -26,11 +27,11 @@ export class Sample {
     };
   }
 
-  package(): NodeId {
+  package(): TreeNode {
     return this.tree.child(this.tree.root, "package", SAMPLE_PACKAGE);
   }
 
-  module(path: string): NodeId {
+  module(path: string): TreeNode {
     let node = this.package();
     for (const name of path.split("/").filter((name) => name !== "")) {
       node = this.tree.child(node, "module", name);
@@ -41,12 +42,14 @@ export class Sample {
     return node;
   }
 
-  file(module: NodeId, path: string, lines: number): void {
-    this.files.push({ path, module, test: false, lines });
+  file(module: TreeNode, path: string, lines: number): CodeFile {
+    const file = { path, module, test: false, lines };
+    this.files.push(file);
+    return file;
   }
 
-  item(owner: NodeId, name: string, kind: ItemKind): ItemId {
-    this.items.push({
+  item(owner: TreeNode, name: string, kind: ItemKind): SampleItem {
+    const item: SampleItem = {
       name,
       owner,
       file: this.firstFileOf(owner),
@@ -54,49 +57,38 @@ export class Sample {
       parent: undefined,
       implementsInheritedMember: false,
       takesThis: false,
-    });
-    return idFromIndex<ItemId>(this.items.length - 1);
+    };
+    this.items.push(item);
+    return item;
   }
 
-  member(parent: ItemId, owner: NodeId, name: string, kind: ItemKind): ItemId {
-    const id = this.item(owner, name, kind);
-    this.change(id, { parent });
-    return id;
+  member(parent: Item, owner: TreeNode, name: string, kind: ItemKind): SampleItem {
+    const item = this.item(owner, name, kind);
+    item.parent = parent;
+    return item;
   }
 
-  change(id: ItemId, changes: Partial<Item>): void {
-    this.items[id] = { ...this.itemAt(id), ...changes };
-  }
-
-  itemAt(id: ItemId): Item {
-    const item = this.items[id];
+  named(name: string): SampleItem {
+    const item = this.items.find((each) => each.name === name);
     if (item === undefined) {
-      throw new RangeError(`no item ${id} in the sample`);
+      throw new RangeError(`no item named ${name} in the sample`);
     }
     return item;
   }
 
-  named(name: string): ItemId {
-    const index = this.items.findIndex((item) => item.name === name);
-    if (index < 0) {
-      throw new RangeError(`no item named ${name} in the sample`);
-    }
-    return idFromIndex<ItemId>(index);
-  }
-
-  refer(holder: ItemId, item: ItemId): void {
+  refer(holder: Item, item: Item): void {
     this.reference(holder, item, false);
   }
 
-  read(holder: ItemId, item: ItemId): void {
+  read(holder: Item, item: Item): void {
     this.reference(holder, item, true);
   }
 
-  private reference(holder: ItemId, item: ItemId, onlyReadsValue: boolean): void {
-    const from = this.itemAt(holder).owner;
+  private reference(holder: Item, item: Item, onlyReadsValue: boolean): void {
+    const from = holder.owner;
     const file = this.firstFileOf(from);
     if (file === undefined) {
-      throw new RangeError(`no file of module ${from} in the sample`);
+      throw new RangeError(`no file of module ${from.name} in the sample`);
     }
     this.references.push({
       file,
@@ -109,8 +101,7 @@ export class Sample {
     });
   }
 
-  private firstFileOf(module: NodeId): FileId | undefined {
-    const index = this.files.findIndex((file) => file.module === module);
-    return index < 0 ? undefined : idFromIndex<FileId>(index);
+  private firstFileOf(module: TreeNode): CodeFile | undefined {
+    return this.files.find((file) => file.module === module);
   }
 }

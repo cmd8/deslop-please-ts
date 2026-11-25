@@ -1,4 +1,4 @@
-import type { CodeFile, Model, NodeId } from "../model/index.ts";
+import type { CodeFile, Model, TreeNode } from "../model/index.ts";
 import { compareText } from "./diagnostic.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { INDEX_FILE_NAMES, TYPESCRIPT_EXTENSIONS, inScope, listed } from "./reporting.ts";
@@ -12,7 +12,7 @@ interface DirectoryMembers {
   concerned: boolean;
 }
 
-export function layout(model: Model, scope: NodeId | undefined): Diagnostic[] {
+export function layout(model: Model, scope: TreeNode | undefined): Diagnostic[] {
   const concerned = (file: CodeFile): boolean => inScope(model.tree, scope, file.module);
   const diagnostics = model.files
     .filter((file) => file.lines > MOST_LINES_OF_A_FILE && concerned(file))

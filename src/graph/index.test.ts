@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { Sample } from "../model/sample.ts";
-import { buildGraph, thingAt } from "./index.ts";
+import { buildGraph } from "./index.ts";
 
 test("a method written anywhere is part of its type and things that use each other are a tangle", () => {
   const sample = new Sample();
@@ -14,10 +14,9 @@ test("a method written anywhere is part of its type and things that use each oth
   sample.refer(fire, tasks);
   sample.refer(spawn, timers);
   const graph = buildGraph(sample.model);
-  const ofFire = graph.thingOf[fire];
-  assert.ok(ofFire !== undefined);
-  assert.equal(thingAt(graph, ofFire).item, timers);
-  assert.equal(thingAt(graph, ofFire).home, b);
+  const ofFire = graph.thingOf.get(fire);
+  assert.equal(ofFire?.item, timers);
+  assert.equal(ofFire?.home, b);
   assert.equal(graph.tangles.length, 1);
   assert.equal(graph.tangles[0]?.length, 2);
 });
@@ -47,6 +46,6 @@ test("a use of a wrapper is a use of what is behind it and its own body is no us
       [items, forwarder],
     ],
   );
-  const reporter = graph.thingOf[report];
+  const reporter = graph.thingOf.get(report);
   assert.ok(graph.uses.every((usage) => usage.user === reporter));
 });

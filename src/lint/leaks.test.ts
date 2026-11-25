@@ -1,18 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { buildGraph } from "../graph/index.ts";
-import { idFromIndex } from "../id.ts";
-import type { ItemId, Wrapper } from "../model/index.ts";
+import type { Item, Wrapper } from "../model/index.ts";
 import { Sample } from "../model/sample.ts";
 import type { Diagnostic } from "./diagnostic.ts";
 import { fieldLeaks } from "./leaks.ts";
 
 interface Queue {
   readonly sample: Sample;
-  readonly admit: ItemId;
-  readonly head: ItemId;
-  readonly limit: ItemId;
-  readonly runQueue: ItemId;
+  readonly admit: Item;
+  readonly head: Item;
+  readonly limit: Item;
+  readonly runQueue: Item;
 }
 
 function queue(): Queue {
@@ -25,7 +24,7 @@ function queue(): Queue {
   );
   assert.ok(items !== undefined && head !== undefined && limit !== undefined);
   const full = sample.member(runQueue, queueModule, "RunQueue.full", "function");
-  sample.change(full, { takesThis: true });
+  full.takesThis = true;
   for (const field of [items, head, limit]) {
     sample.refer(full, field);
   }
@@ -44,8 +43,8 @@ function keys(sample: Sample): string[] {
     .sort();
 }
 
-function getterOfHead({ sample, head, runQueue }: Queue): ItemId {
-  const getter = sample.member(runQueue, sample.itemAt(head).owner, "RunQueue.head", "function");
+function getterOfHead({ sample, head, runQueue }: Queue): Item {
+  const getter = sample.member(runQueue, head.owner, "RunQueue.head", "function");
   sample.refer(getter, head);
   return getter;
 }
@@ -73,7 +72,7 @@ test("a getter is seen through and free code in the same file is an outsider", (
     lendsOnlyToRead: true,
   });
   sample.wrappers.set(getter, handsOut(false));
-  const drained = sample.item(sample.itemAt(head).owner, "drained", "function");
+  const drained = sample.item(head.owner, "drained", "function");
   sample.refer(drained, getter);
   sample.refer(admit, getter);
   assert.deepEqual(keys(sample), ["p/queue:RunQueue.head", "p/queue:RunQueue.items"]);
@@ -106,6 +105,8 @@ test("a struct that keeps nothing or does nothing guards nothing", () => {
   keepsNothing.sample.refer(keepsNothing.admit, keepsNothing.limit);
   assert.deepEqual(keys(keepsNothing.sample), []);
   const { sample } = queue();
-  sample.items.forEach((_, index) => sample.change(idFromIndex<ItemId>(index), { takesThis: false }));
+  for (const item of sample.items) {
+    item.takesThis = false;
+  }
   assert.deepEqual(keys(sample), []);
 });

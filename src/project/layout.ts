@@ -1,16 +1,11 @@
 import { relative, sep } from "node:path";
-import { Tree, type CodeFile, type NodeId } from "../model/index.ts";
+import { Tree, type CodeFile, type TreeNode } from "../model/index.ts";
 import type { AnalyzedSource } from "./programs.ts";
 import { innermostPackage, type Workspace, type WorkspacePackage } from "./workspace.ts";
 
-export interface PlacedSource {
-  readonly source: AnalyzedSource;
-  readonly file: CodeFile;
-}
-
-export interface Layout {
+export interface Layout<Entry> {
   readonly tree: Tree;
-  readonly placed: readonly PlacedSource[];
+  readonly placed: readonly (Entry & { readonly file: CodeFile })[];
 }
 
 const INDEX_FILE = /^index\.(ts|tsx|mts|cts)$/;
@@ -23,19 +18,17 @@ export interface CountedSource {
   readonly lines: number;
 }
 
-export function layOut(workspace: Workspace, sources: readonly CountedSource[]): Layout {
+export function layOut<Entry extends CountedSource>(workspace: Workspace, entries: readonly Entry[]): Layout<Entry> {
   const tree = new Tree();
   const packageNodes = packageNodesOf(workspace, tree);
-  const placed = sources.map(({ source, lines }): PlacedSource => {
+  const placed = entries.map((entry) => {
+    const { source, lines } = entry;
     const packageNode = packageNodes.get(source.package);
     if (packageNode === undefined) {
       throw new RangeError(`no node for the package at ${source.package.directory}`);
     }
     const placement = placeInPackage(tree, packageNode, source);
-    return {
-      source,
-      file: { path: source.path, module: placement.module, test: placement.test, lines },
-    };
+    return { ...entry, file: { path: source.path, module: placement.module, test: placement.test, lines } };
   });
   return { tree, placed };
 }
@@ -48,8 +41,8 @@ export function lineCount(text: string): number {
   return text.endsWith("\n") ? breaks : breaks + 1;
 }
 
-function packageNodesOf(workspace: Workspace, tree: Tree): Map<WorkspacePackage, NodeId> {
-  const nodes = new Map<WorkspacePackage, NodeId>();
+function packageNodesOf(workspace: Workspace, tree: Tree): Map<WorkspacePackage, TreeNode> {
+  const nodes = new Map<WorkspacePackage, TreeNode>();
   const outermostFirst = [...workspace.packages].sort(
     (a, b) => a.directory.split(sep).length - b.directory.split(sep).length,
   );
@@ -69,9 +62,9 @@ function packageNodesOf(workspace: Workspace, tree: Tree): Map<WorkspacePackage,
 
 function placeInPackage(
   tree: Tree,
-  packageNode: NodeId,
+  packageNode: TreeNode,
   source: AnalyzedSource,
-): { readonly module: NodeId; readonly test: boolean } {
+): { readonly module: TreeNode; readonly test: boolean } {
   const parts = relative(source.package.directory, joinedPath(source)).split(sep);
   const fileName = parts.pop() ?? "";
   let module = packageNode;

@@ -13,21 +13,20 @@ import {
   type CallExpression,
   type Node,
 } from "typescript/ast";
-import { idFromIndex } from "../id.ts";
-import type { ItemId, Wrapper } from "../model/index.ts";
+import type { Item, Wrapper } from "../model/index.ts";
 import type { Catalog, DeclarationRecord } from "./catalog.ts";
 import { functionPartsOf, withoutParentheses } from "./syntax.ts";
 
-export type ResolvedAt = (node: Node) => ItemId | undefined;
+export type ResolvedAt = (node: Node) => Item | undefined;
 
 interface Forwarding {
-  readonly target: ItemId;
-  readonly fieldsCalledOn: readonly ItemId[];
+  readonly target: Item;
+  readonly fieldsCalledOn: readonly Item[];
 }
 
 interface HandedFields {
-  readonly returned: ItemId[];
-  readonly written: ItemId[];
+  readonly returned: Item[];
+  readonly written: Item[];
 }
 
 export interface BodyWrapping {
@@ -35,10 +34,10 @@ export interface BodyWrapping {
   readonly handed: HandedFields | undefined;
 }
 
-export function wrappingOf(catalog: Catalog, node: Node, item: ItemId, resolvedAt: ResolvedAt): BodyWrapping | undefined {
+export function wrappingOf(catalog: Catalog, node: Node, item: Item, resolvedAt: ResolvedAt): BodyWrapping | undefined {
   const parts = functionPartsOf(node);
-  const takesThis = catalog.items[item]?.takesThis ?? false;
-  if (parts?.body === undefined || catalog.items[item]?.kind !== "function") {
+  const takesThis = item.takesThis;
+  if (parts?.body === undefined || item.kind !== "function") {
     return undefined;
   }
   const parameters = new Set(parts.parameters.flatMap((parameter) => (isIdentifier(parameter.name) ? [parameter.name.text] : [])));
@@ -48,38 +47,37 @@ export function wrappingOf(catalog: Catalog, node: Node, item: ItemId, resolvedA
   };
 }
 
-export function assembleWrappers(catalog: Catalog, wrappings: ReadonlyMap<DeclarationRecord, BodyWrapping>): Map<ItemId, Wrapper> {
-  const wrappers = new Map<ItemId, Wrapper>();
-  const forwardings = new Map<ItemId, Forwarding>();
-  catalog.items.forEach((item, index) => {
-    const id = idFromIndex<ItemId>(index);
+export function assembleWrappers(catalog: Catalog, wrappings: ReadonlyMap<DeclarationRecord, BodyWrapping>): Map<Item, Wrapper> {
+  const wrappers = new Map<Item, Wrapper>();
+  const forwardings = new Map<Item, Forwarding>();
+  for (const item of catalog.items) {
     if (item.kind !== "function") {
-      return;
+      continue;
     }
-    const declarations = catalog.declarationsOf[id] ?? [];
+    const declarations = catalog.declarationsOf.get(item) ?? [];
     const withBody = declarations.filter((declaration) => declaration.hasBody);
     const [only] = withBody;
     const forwarding = only !== undefined && withBody.length === 1 ? wrappings.get(only)?.forwarding : undefined;
     if (forwarding !== undefined) {
-      forwardings.set(id, forwarding);
-      return;
+      forwardings.set(item, forwarding);
+      continue;
     }
     const accessor = item.takesThis ? accessorOf(catalog, declarations, wrappings) : undefined;
     if (accessor !== undefined) {
-      wrappers.set(id, accessor);
+      wrappers.set(item, accessor);
     }
-  });
+  }
   for (const [id, forwarding] of withoutLoops(forwardings)) {
     wrappers.set(id, { kind: "forwarder", target: forwarding.target, fieldsCalledOn: forwarding.fieldsCalledOn });
   }
   return wrappers;
 }
 
-function withoutLoops(forwardings: ReadonlyMap<ItemId, Forwarding>): Map<ItemId, Forwarding> {
-  const looping = new Set<ItemId>();
+function withoutLoops(forwardings: ReadonlyMap<Item, Forwarding>): Map<Item, Forwarding> {
+  const looping = new Set<Item>();
   for (const start of forwardings.keys()) {
-    const path: ItemId[] = [];
-    let at: ItemId | undefined = start;
+    const path: Item[] = [];
+    let at: Item | undefined = start;
     while (at !== undefined && forwardings.has(at) && !path.includes(at)) {
       path.push(at);
       at = forwardings.get(at)?.target;
@@ -110,8 +108,7 @@ function forwardingOf(
   }
   const callee = withoutParentheses(call.expression);
   const target = isPropertyAccessExpression(callee) ? resolvedAt(callee.name) : resolvedAt(callee);
-  const targetItem = target === undefined ? undefined : catalog.items[target];
-  if (target === undefined || targetItem?.kind !== "function" || parameterCount(catalog, target) !== call.arguments.length) {
+  if (target === undefined || target.kind !== "function" || parameterCount(catalog, target) !== call.arguments.length) {
     return undefined;
   }
   if (!isPropertyAccessExpression(callee)) {
@@ -127,7 +124,7 @@ function forwardingOf(
 
 function namesTypeOrModule(catalog: Catalog, receiver: Node, resolvedAt: ResolvedAt): boolean {
   const named = resolvedAt(receiver);
-  return named === undefined || catalog.items[named]?.kind === "type";
+  return named === undefined || named.kind === "type";
 }
 
 function onlyCall(body: Node): CallExpression | undefined {
@@ -153,17 +150,17 @@ function onlyCall(body: Node): CallExpression | undefined {
   return isCallExpression(value) ? value : undefined;
 }
 
-function parameterCount(catalog: Catalog, target: ItemId): number | undefined {
-  const declarations = catalog.declarationsOf[target] ?? [];
+function parameterCount(catalog: Catalog, target: Item): number | undefined {
+  const declarations = catalog.declarationsOf.get(target) ?? [];
   return (declarations.find((declaration) => declaration.hasBody) ?? declarations[0])?.parameterCount;
 }
 
-function fieldPathOfThis(catalog: Catalog, receiver: Node, resolvedAt: ResolvedAt): ItemId[] | undefined {
-  const fields: ItemId[] = [];
+function fieldPathOfThis(catalog: Catalog, receiver: Node, resolvedAt: ResolvedAt): Item[] | undefined {
+  const fields: Item[] = [];
   let at = receiver;
   while (isPropertyAccessExpression(at)) {
     const field = resolvedAt(at.name);
-    if (field === undefined || catalog.items[field]?.kind !== "field") {
+    if (field === undefined || field.kind !== "field") {
       return undefined;
     }
     fields.unshift(field);
@@ -209,8 +206,8 @@ function handedFieldsOf(
     return undefined;
   }
   const handed: HandedFields = { returned: [], written: [] };
-  const locals = new Map<string, ItemId>();
-  const fieldOfThis = (node: Node): ItemId | undefined => {
+  const locals = new Map<string, Item>();
+  const fieldOfThis = (node: Node): Item | undefined => {
     const value = withoutParentheses(node);
     if (isIdentifier(value)) {
       return locals.get(value.text);
@@ -219,9 +216,9 @@ function handedFieldsOf(
       return undefined;
     }
     const field = resolvedAt(value.name);
-    return field !== undefined && catalog.items[field]?.kind === "field" ? field : undefined;
+    return field !== undefined && field.kind === "field" ? field : undefined;
   };
-  const handedOut = (node: Node): ItemId[] | undefined => {
+  const handedOut = (node: Node): Item[] | undefined => {
     const value = withoutParentheses(node);
     if (isArrayLiteralExpression(value)) {
       const parts = value.elements.map(fieldOfThis);
@@ -264,6 +261,6 @@ function handedFieldsOf(
   return handed;
 }
 
-function unique(ids: readonly ItemId[]): ItemId[] {
-  return [...new Set(ids)];
+function unique(items: readonly Item[]): Item[] {
+  return [...new Set(items)];
 }
