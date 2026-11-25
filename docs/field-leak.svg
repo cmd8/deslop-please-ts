@@ -1,0 +1,130 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 320" width="800" height="320" role="img" aria-label="field-leak: before, functions in sched push to, index and bump the items and head of RunQueue; after, they call push, pop and backlog, and only RunQueue works on its fields">
+  <style>
+    text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: #1f2328; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .small { font-size: 12px; }
+    .code { font-size: 11px; }
+    .muted { fill: #656d76; }
+    .bold { font-weight: 600; }
+    .canvas { fill: #ffffff; stroke: #d0d7de; }
+    .panel { fill: #f6f8fa; }
+    .mod { fill: #ffffff; stroke: #8c959f; stroke-width: 1.2; }
+    .box { fill: none; stroke: #afb8c1; stroke-width: 1.2; }
+    .private { fill: #ffffff; stroke: #8c959f; stroke-width: 1.2; stroke-dasharray: 4 3; }
+    .tree { stroke: #afb8c1; stroke-width: 1.5; fill: none; }
+    .edge { stroke: #57606a; stroke-width: 1.5; fill: none; }
+    .thin { stroke: #8c959f; stroke-width: 1.2; fill: none; }
+    .bad { stroke: #cf222e; stroke-width: 1.8; fill: none; }
+    .good { stroke: #1a7f37; stroke-width: 2; fill: none; }
+    .badtext { fill: #cf222e; }
+    .goodtext { fill: #1a7f37; }
+    .badbox { fill: #ffebe9; stroke: #cf222e; stroke-width: 1.2; }
+    .goodbox { fill: #dafbe1; stroke: #1a7f37; stroke-width: 1.2; }
+    .tip-n { fill: #57606a; } .tip-t { fill: #8c959f; } .tip-b { fill: #cf222e; } .tip-g { fill: #1a7f37; }
+    @media (prefers-color-scheme: dark) {
+      text { fill: #e6edf3; }
+      .muted { fill: #8d96a0; }
+      .canvas { fill: #0d1117; stroke: #30363d; }
+      .panel { fill: #161b22; }
+      .mod, .private { fill: #0d1117; stroke: #6e7681; }
+      .box, .tree { stroke: #484f58; }
+      .edge { stroke: #8d96a0; }
+      .thin { stroke: #6e7681; }
+      .bad { stroke: #f85149; }
+      .good { stroke: #3fb950; }
+      .badtext { fill: #f85149; }
+      .goodtext { fill: #3fb950; }
+      .badbox { fill: #3c1618; stroke: #f85149; }
+      .goodbox { fill: #12261e; stroke: #3fb950; }
+      .tip-n { fill: #8d96a0; } .tip-t { fill: #6e7681; } .tip-b { fill: #f85149; } .tip-g { fill: #3fb950; }
+    }
+  </style>
+  <defs>
+    <marker id="n" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tip-n"/></marker>
+    <marker id="t" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tip-t"/></marker>
+    <marker id="b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tip-b"/></marker>
+    <marker id="g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" class="tip-g"/></marker>
+  </defs>
+  <rect class="canvas" x="0.5" y="0.5" width="799" height="319" rx="8"/>
+  <rect class="panel" x="10" y="10" width="380" height="300" rx="6"/>
+  <rect class="panel" x="410" y="10" width="380" height="300" rx="6"/>
+  <rect class="badbox" x="22" y="20" width="64" height="22" rx="11"/>
+  <text class="bold small badtext" x="54" y="35" text-anchor="middle">Before</text>
+  <rect class="goodbox" x="422" y="20" width="56" height="22" rx="11"/>
+  <text class="bold small goodtext" x="450" y="35" text-anchor="middle">After</text>
+  <!-- Before -->
+  <rect class="box" x="18" y="52" width="174" height="134" rx="6"/>
+  <text class="mono muted" x="28" y="70">sched::policy</text>
+  <rect class="box" x="18" y="192" width="174" height="106" rx="6"/>
+  <text class="mono muted" x="28" y="210">sched::report</text>
+  <rect class="box" x="222" y="52" width="155" height="246" rx="6"/>
+  <text class="mono muted" x="232" y="70">RunQueue</text>
+  <path class="bad" d="M172.0,107.3 L268.8,120.7" marker-end="url(#b)"/>
+  <path class="bad" d="M168.5,144.6 L268.8,129.6" marker-end="url(#b)"/>
+  <path class="bad" d="M139.9,214.5 L271.4,141.0" marker-end="url(#b)"/>
+  <path class="bad" d="M182.5,265.9 Q212,262 289.7,141.0" marker-end="url(#b)"/>
+  <path class="bad" d="M168.5,173.5 L272.4,205.5" marker-end="url(#b)"/>
+  <path class="thin" d="M179.0,226.4 L272.4,216.8" marker-end="url(#t)"/>
+  <path class="thin" d="M166.3,256.5 L272.4,222.8" marker-end="url(#t)"/>
+  <rect class="mod" x="39.0" y="79.5" width="132.0" height="37" rx="5"/>
+  <text class="mono bold" x="105.0" y="95.5" text-anchor="middle">admit</text>
+  <text class="mono code muted" x="105.0" y="110.5" text-anchor="middle">items.push(task)</text>
+  <rect class="mod" x="42.5" y="128.0" width="125.0" height="52" rx="5"/>
+  <text class="mono bold" x="105.0" y="144.0" text-anchor="middle">next</text>
+  <text class="mono code muted" x="105.0" y="159.0" text-anchor="middle">items.get(head)</text>
+  <text class="mono code muted" x="105.0" y="174.0" text-anchor="middle">head += 1</text>
+  <rect class="mod" x="32.0" y="215.5" width="146.0" height="37" rx="5"/>
+  <text class="mono bold" x="105.0" y="231.5" text-anchor="middle">backlog</text>
+  <text class="mono code muted" x="105.0" y="246.5" text-anchor="middle">items.len() - head</text>
+  <rect class="mod" x="28.5" y="257.5" width="153.0" height="37" rx="5"/>
+  <text class="mono bold" x="105.0" y="273.5" text-anchor="middle">drained</text>
+  <text class="mono code muted" x="105.0" y="288.5" text-anchor="middle">head == items.len()</text>
+  <rect class="badbox" x="271.8" y="112.0" width="56.5" height="26" rx="5"/>
+  <text class="mono badtext" x="300.0" y="129" text-anchor="middle">items</text>
+  <rect class="badbox" x="275.4" y="201.0" width="49.2" height="26" rx="5"/>
+  <text class="mono badtext" x="300.0" y="218" text-anchor="middle">head</text>
+  <rect class="private" x="271.8" y="255.0" width="56.5" height="26" rx="5"/>
+  <text class="mono" x="300.0" y="272" text-anchor="middle">limit</text>
+  <text class="small muted" x="375" y="35" text-anchor="end">grey: a read, no leak</text>
+  <!-- After -->
+  <rect class="box" x="418" y="52" width="174" height="134" rx="6"/>
+  <text class="mono muted" x="428" y="70">sched::policy</text>
+  <rect class="box" x="418" y="192" width="174" height="106" rx="6"/>
+  <text class="mono muted" x="428" y="210">sched::report</text>
+  <rect class="box" x="607" y="52" width="170" height="246" rx="6"/>
+  <text class="mono muted" x="617" y="70">RunQueue</text>
+  <path class="good" d="M572.0,103.3 L621.1,107.2" marker-end="url(#g)"/>
+  <path class="good" d="M554.5,160.9 L624.8,170.7" marker-end="url(#g)"/>
+  <path class="good" d="M568.5,238.6 L610.1,241.7" marker-end="url(#g)"/>
+  <path class="good" d="M586.0,259.4 L610.1,254.4" marker-end="url(#g)"/>
+  <path class="thin" d="M674.7,124.0 L721.6,159.0" marker-end="url(#t)"/>
+  <path class="thin" d="M688.9,104.3 L711.8,100.4" marker-end="url(#t)"/>
+  <path class="thin" d="M685.2,175.0 L711.8,175.0" marker-end="url(#t)"/>
+  <path class="thin" d="M671.2,189.0 L725.6,239.0" marker-end="url(#t)"/>
+  <path class="thin" d="M673.4,231.0 L723.1,191.0" marker-end="url(#t)"/>
+  <path class="thin" d="M699.9,250.0 L715.4,251.8" marker-end="url(#t)"/>
+  <rect class="mod" x="439.0" y="79.5" width="132.0" height="37" rx="5"/>
+  <text class="mono bold" x="505.0" y="95.5" text-anchor="middle">admit</text>
+  <text class="mono code muted" x="505.0" y="110.5" text-anchor="middle">queue.push(task)</text>
+  <rect class="mod" x="456.5" y="135.5" width="97.0" height="37" rx="5"/>
+  <text class="mono bold" x="505.0" y="151.5" text-anchor="middle">next</text>
+  <text class="mono code muted" x="505.0" y="166.5" text-anchor="middle">queue.pop()</text>
+  <rect class="mod" x="442.5" y="215.5" width="125.0" height="37" rx="5"/>
+  <text class="mono bold" x="505.0" y="231.5" text-anchor="middle">backlog</text>
+  <text class="mono code muted" x="505.0" y="246.5" text-anchor="middle">queue.backlog()</text>
+  <rect class="mod" x="425.0" y="257.5" width="160.0" height="37" rx="5"/>
+  <text class="mono bold" x="505.0" y="273.5" text-anchor="middle">drained</text>
+  <text class="mono code muted" x="505.0" y="288.5" text-anchor="middle">queue.backlog() == 0</text>
+  <rect class="goodbox" x="624.1" y="97.0" width="63.8" height="26" rx="5"/>
+  <text class="mono goodtext" x="656.0" y="114" text-anchor="middle">push()</text>
+  <rect class="goodbox" x="627.8" y="162.0" width="56.5" height="26" rx="5"/>
+  <text class="mono goodtext" x="656.0" y="179" text-anchor="middle">pop()</text>
+  <rect class="goodbox" x="613.1" y="232.0" width="85.7" height="26" rx="5"/>
+  <text class="mono goodtext" x="656.0" y="249" text-anchor="middle">backlog()</text>
+  <rect class="private" x="714.8" y="82.0" width="56.5" height="26" rx="5"/>
+  <text class="mono" x="743.0" y="99" text-anchor="middle">limit</text>
+  <rect class="private" x="714.8" y="162.0" width="56.5" height="26" rx="5"/>
+  <text class="mono" x="743.0" y="179" text-anchor="middle">items</text>
+  <rect class="private" x="718.4" y="242.0" width="49.2" height="26" rx="5"/>
+  <text class="mono" x="743.0" y="259" text-anchor="middle">head</text>
+</svg>
