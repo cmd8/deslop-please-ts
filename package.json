@@ -1,8 +1,16 @@
 {
   "name": "deslop-please-ts",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "An opinionated linter to remove sloppy TypeScript code: deep modules, narrow interfaces.",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cmd8/deslop-please-ts.git"
+  },
+  "homepage": "https://github.com/cmd8/deslop-please-ts#readme",
+  "bugs": {
+    "url": "https://github.com/cmd8/deslop-please-ts/issues"
+  },
   "type": "module",
   "bin": {
     "deslop-please-ts": "dist/main.js"
